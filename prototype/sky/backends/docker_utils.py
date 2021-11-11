@@ -60,7 +60,8 @@ def _execute_build(tag, context_path):
     docker_client = docker.from_env()
     docker_client.images.build(path=context_path,
                                tag=tag,
-                               rm=True)
+                               rm=True,
+                               quiet=False)
 
 def build_dockerimage(dockerfile_contents, copy_path, tag):
     """
@@ -82,7 +83,7 @@ def build_dockerimage(dockerfile_contents, copy_path, tag):
     copy_dir_name = os.path.basename(os.path.dirname(copy_path))
     dst = os.path.join(temp_dir, copy_dir_name)
     shutil.copytree(copy_path, dst)
-    print(temp_dir)
+    logger.info(f"Using tempdir {temp_dir} for docker build.")
 
     # Run docker image build
     _execute_build(tag, context_path=temp_dir)
@@ -97,6 +98,7 @@ def build_dockerimage_from_task(task: Task):
     """ Builds a docker image from a tag"""
     dockerfile_contents = create_dockerfile(base_image=task.docker_image,
                                             setup_command=task.setup,
-                                            copy_path=task.workdir)
+                                            copy_path=task.workdir,
+                                            run_command=task.run)
     tag = build_dockerimage(dockerfile_contents, task.workdir, tag=task.name)
     return tag
