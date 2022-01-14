@@ -10,6 +10,7 @@ resources:
   cloud: aws
 
 setup: |
+  # exit 1
   echo "running setup"
 
 run: |

@@ -237,7 +237,7 @@ def _create_and_ssh_into_node(
     # Use ssh rather than 'ray attach' to suppress ray messages, speed up
     # connection, and for allowing adding 'cd workdir' in the future.
     # Disable check, since the returncode could be non-zero if the user Ctrl-D.
-    commands = backend.ssh_head_command(handle, port_forward=port_forward)
+    commands = backend.ssh_command(handle, port_forward=port_forward)
     if session_manager == 'screen':
         commands += ['screen', '-D', '-R']
     elif session_manager == 'tmux':
@@ -316,15 +316,17 @@ def launch(entrypoint: Union[Path, str], cluster: str, dryrun: bool,
     with sky.Dag() as dag:
         if _check_yaml(entrypoint):
             # Treat entrypoint as a yaml.
-            click.secho(f'Detected YAML file: {entrypoint}', fg='blue')
+            click.secho('Task from YAML spec: ', fg='yellow', nl=False)
+            click.secho(entrypoint, bold=True)
             sky.Task.from_yaml(entrypoint)
         else:
             # Treat entrypoint as a bash command.
-            click.secho(f'Detected Bash Command: \'{entrypoint}\'', fg='blue')
+            click.secho('Task from command: ', fg='yellow', nl=False)
+            click.secho(entrypoint, bold=True)
             task = sky.Task(name='<cmd>', run=entrypoint)
             task.set_resources({sky.Resources()})
 
-    click.secho(f'Running task on cluster {cluster} ...', fg='yellow')
+    click.secho(f'Running task on cluster {cluster}...', fg='yellow')
     sky.launch(dag,
                dryrun=dryrun,
                stream_logs=True,
@@ -399,15 +401,17 @@ def exec(entrypoint: Union[Path, str], cluster: str, detach_run: bool):
     with sky.Dag() as dag:
         if _check_yaml(entrypoint):
             # Treat entrypoint as a yaml file
-            click.secho(f'Detected YAML file: {entrypoint}', fg='blue')
+            click.secho('Task from YAML spec: ', fg='yellow', nl=False)
+            click.secho(entrypoint, bold=True)
             sky.Task.from_yaml(entrypoint)
         else:
             # Treat entrypoint as a bash command.
-            click.secho(f'Detected Bash Command: \'{entrypoint}\'', fg='blue')
+            click.secho('Task from command: ', fg='yellow', nl=False)
+            click.secho(entrypoint, bold=True)
             task = sky.Task(name='<cmd>', run=entrypoint)
             task.set_resources({sky.Resources()})
 
-    click.secho(f'Executing task on cluster {cluster} ...', fg='yellow')
+    click.secho(f'Executing task on cluster {cluster}...', fg='yellow')
     sky.exec(dag, cluster_name=cluster, detach_run=detach_run)
 
 
@@ -522,7 +526,10 @@ def _show_job_queue_on_cluster(cluster: str, handle: Optional[Any],
             'Please re-launch it with `sky launch` to view the job queue.')
         return
 
-    job_table = backend.run_on_head(handle, code)
+    job_table = backend.run_command_on_node(handle,
+                                            code,
+                                            stream_logs=False,
+                                            head=True)[1]
     click.echo(f'{job_table}')
 
 
@@ -548,7 +555,7 @@ def logs(cluster: str, job_id: str):
         raise click.BadParameter(f'Cluster \'{cluster_name}\' not found'
                                  ' (see `sky status`).')
     click.secho('Start streaming logs...', fg='yellow')
-    backend.run_on_head(handle, code, stream_logs=True)
+    backend.run_command_on_node(handle, code, stream_logs=True, head=True)
 
 
 @cli.command()
@@ -591,7 +598,7 @@ def cancel(cluster: str, all: bool, jobs: List[int]):  # pylint: disable=redefin
 
     # FIXME: Assumes a specific backend.
     backend = backends.CloudVmRayBackend()
-    backend.run_on_head(handle, code, stream_logs=False)
+    backend.run_command_on_node(handle, code, stream_logs=False, head=True)
 
 
 @cli.command()

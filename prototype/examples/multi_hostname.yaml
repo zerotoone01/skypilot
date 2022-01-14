@@ -1,12 +1,16 @@
 name: multi_hostname
 
 resources:
-  cloud: gcp
+  cloud: aws
 
 num_nodes: 2
+
+# setup: exit 1
 
 # The run command will be run on *all* nodes.
 # Should see two lines:
 #   My hostname: <host1>
 #   My hostname: <host2>
 run: 'echo My hostname: $(hostname)'
+
+# setup: exit 1
