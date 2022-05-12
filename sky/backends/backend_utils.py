@@ -82,7 +82,7 @@ _MAX_CLUSTER_NAME_LEN = 37
 
 # Allow each CPU thread take 2 tasks.
 # Note: This value cannot be too small, otherwise OOM issue may occur.
-DEFAULT_TASK_CPU_DEMAND = 0.5
+DEFAULT_TASK_CPU_DEMAND = 0.05
 
 SKY_RESERVED_CLUSTER_NAMES = [spot_lib.SPOT_CONTROLLER_NAME]
 
@@ -98,6 +98,9 @@ def fill_template(template_name: str,
         raise FileNotFoundError(f'Template "{template_name}" does not exist.')
     with open(template_path) as fin:
         template = fin.read()
+    # Assign a special variable for hash of the template file.
+    variables['__template_hash__'] = hashlib.sha256(
+        template.encode()).hexdigest()
     if output_path is None:
         assert ('cluster_name' in variables), ('cluster_name is required.')
         cluster_name = variables.get('cluster_name')

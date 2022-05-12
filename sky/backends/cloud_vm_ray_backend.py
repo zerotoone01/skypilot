@@ -1285,6 +1285,11 @@ class CloudVmRayBackend(backends.Backend):
         # FIXME: ray up for Azure with different cluster_names will overwrite
         # each other.
 
+        with timeline.Event('backend.provision.wheel_build'):
+            # TODO(suquark): once we have sky on PYPI, we should directly
+            # install sky from PYPI.
+            local_wheel_path = wheel_utils.build_sky_wheel()
+
         lock_path = os.path.expanduser(_LOCK_FILENAME.format(cluster_name))
         # TODO(mraheja): remove pylint disabling when filelock version updated
         # pylint: disable=abstract-class-instantiated
@@ -1299,10 +1304,6 @@ class CloudVmRayBackend(backends.Backend):
                     backend_utils.refresh_cluster_status_handle(cluster_name))
             assert to_provision_config.resources is not None, (
                 'to_provision should not be None', to_provision_config)
-            with timeline.Event('backend.provision.wheel_build'):
-                # TODO(suquark): once we have sky on PYPI, we should directly
-                # install sky from PYPI.
-                local_wheel_path = wheel_utils.build_sky_wheel()
             try:
                 provisioner = RetryingVmProvisioner(self.log_dir, self._dag,
                                                     self._optimize_target,
