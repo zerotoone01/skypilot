@@ -54,6 +54,7 @@ from sky.backends import timeline
 from sky.clouds import service_catalog
 from sky.data import data_utils
 from sky.data.storage import StoreType
+from sky.execution import exec_or_launch
 from sky.skylet import job_lib
 from sky.skylet.utils import log_utils
 from sky.utils.cli_utils import status_utils
@@ -2194,14 +2195,14 @@ def spot_launch(
             f'Launching managed spot job {name} from spot controller...',
             fg='yellow')
         backend = backends.CloudVmRayBackend()
-        sky.launch(dag,
-                   stream_logs=True,
-                   cluster_name=controller_name,
-                   detach_run=detach_run,
-                   backend=backend,
-                   idle_minutes_to_autostop=spot_lib.
-                   SPOT_CONTROLLER_IDLE_MINUTES_TO_AUTOSTOP,
-                   is_spot_controller_task=True)
+        exec_or_launch(dag,
+                       stream_logs=True,
+                       cluster_name=controller_name,
+                       detach_run=detach_run,
+                       backend=backend,
+                       idle_minutes_to_autostop=spot_lib.
+                       SPOT_CONTROLLER_IDLE_MINUTES_TO_AUTOSTOP,
+                       is_spot_controller_task=True)
 
 
 @spot.command('status', cls=_DocumentedCodeCommand)

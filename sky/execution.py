@@ -13,10 +13,13 @@ Current task launcher:
   - ray exec + each task's commands
 """
 import enum
+import os
 import sys
 import time
 import traceback
 from typing import Any, List, Optional
+
+import filelock
 
 import sky
 from sky import backends
@@ -26,6 +29,7 @@ from sky import sky_logging
 from sky import spot
 from sky.backends import backend_utils
 from sky.backends import timeline
+from sky.backends.cloud_vm_ray_backend import _LOCK_FILENAME
 
 logger = sky_logging.init_logger(__name__)
 
@@ -219,6 +223,7 @@ def launch(dag: sky.Dag,
              idle_minutes_to_autostop=idle_minutes_to_autostop)
 
 
+@timeline.event
 def exec(  # pylint: disable=redefined-builtin
     dag: sky.Dag,
     cluster_name: str,
@@ -254,3 +259,64 @@ def exec(  # pylint: disable=redefined-builtin
              ],
              cluster_name=cluster_name,
              detach_run=detach_run)
+
+
+@timeline.event
+def exec_or_launch(dag: sky.Dag,
+                   dryrun: bool = False,
+                   teardown: bool = False,
+                   stream_logs: bool = True,
+                   backend: Optional[backends.Backend] = None,
+                   optimize_target: OptimizeTarget = OptimizeTarget.COST,
+                   cluster_name: Optional[str] = None,
+                   detach_run: bool = False,
+                   idle_minutes_to_autostop: Optional[int] = None,
+                   is_spot_controller_task: bool = False):
+    """Try execute on the cluster. If the cluster is not up,
+    then launch the cluster. This helps improving efficiency significantly."""
+
+    if not is_spot_controller_task:
+        backend_utils.check_cluster_name_not_reserved(
+            cluster_name, operation_str='sky.exec_or_launch')
+
+    lock_path = os.path.expanduser(
+        _LOCK_FILENAME.format(cluster_name) + '.exec_or_launch')
+
+    # TODO(mraheja): remove pylint disabling when filelock version updated
+    # pylint: disable=abstract-class-instantiated
+    lock = filelock.FileLock(lock_path)
+    try:
+        lock.acquire()
+        status, handle = backend_utils.refresh_cluster_status_handle(
+            cluster_name)
+        if handle is not None and status == global_user_state.ClusterStatus.UP:
+            lock.release()
+            _execute(dag=dag,
+                     dryrun=dryrun,
+                     teardown=teardown,
+                     stream_logs=stream_logs,
+                     handle=handle,
+                     backend=backend,
+                     optimize_target=optimize_target,
+                     stages=[
+                         Stage.SYNC_WORKDIR,
+                         Stage.EXEC,
+                         Stage.SYNC_FILE_MOUNTS,
+                     ],
+                     cluster_name=cluster_name,
+                     detach_run=detach_run)
+        else:
+            launch(dag=dag,
+                   dryrun=dryrun,
+                   teardown=teardown,
+                   stream_logs=stream_logs,
+                   backend=backend,
+                   optimize_target=optimize_target,
+                   cluster_name=cluster_name,
+                   detach_run=detach_run,
+                   idle_minutes_to_autostop=idle_minutes_to_autostop,
+                   is_spot_controller_task=is_spot_controller_task)
+    finally:
+        # file lock can be released multiple times, so we just release
+        # it here anyway
+        lock.release()
