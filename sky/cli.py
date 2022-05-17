@@ -46,6 +46,7 @@ from sky import backends
 from sky import check as sky_check
 from sky import clouds
 from sky import data
+from sky import execution
 from sky import global_user_state
 from sky import sky_logging
 from sky import spot as spot_lib
@@ -54,7 +55,6 @@ from sky.backends import timeline
 from sky.clouds import service_catalog
 from sky.data import data_utils
 from sky.data.storage import StoreType
-from sky.execution import exec_or_launch
 from sky.skylet import job_lib
 from sky.skylet.utils import log_utils
 from sky.utils.cli_utils import status_utils
@@ -2178,31 +2178,10 @@ def spot_launch(
                                      mode='w') as f:
         task_config = task.to_yaml_config()
         backend_utils.dump_yaml(f.name, task_config)
-
-        controller_name = spot_lib.SPOT_CONTROLLER_NAME
-        yaml_path = backend_utils.fill_template(
-            spot_lib.SPOT_CONTROLLER_TEMPLATE, {
-                'user_yaml_path': f.name,
-                'spot_controller': controller_name,
-                'cluster_name': name,
-                'sky_remote_path': backend_utils.SKY_REMOTE_PATH,
-            },
-            output_prefix=spot_lib.SPOT_CONTROLLER_YAML_PREFIX)
-        with sky.Dag() as dag:
-            task = sky.Task.from_yaml(yaml_path)
-            assert len(task.resources) == 1
         click.secho(
             f'Launching managed spot job {name} from spot controller...',
             fg='yellow')
-        backend = backends.CloudVmRayBackend()
-        exec_or_launch(dag,
-                       stream_logs=True,
-                       cluster_name=controller_name,
-                       detach_run=detach_run,
-                       backend=backend,
-                       idle_minutes_to_autostop=spot_lib.
-                       SPOT_CONTROLLER_IDLE_MINUTES_TO_AUTOSTOP,
-                       is_spot_controller_task=True)
+        execution.exec_spot(f.name, name, detach_run)
 
 
 @spot.command('status', cls=_DocumentedCodeCommand)

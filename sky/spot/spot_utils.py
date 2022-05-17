@@ -27,6 +27,10 @@ _SPOT_STATUS_CACHE = '~/.sky/spot_status_cache.txt'
 
 _LOG_STREAM_CHECK_CONTROLLER_GAP_SECONDS = 5
 
+OVERSUBSCRIPTION_RATIO = 4  # each spot controller handles 4x jobs than #CPUs
+OVERSUBSCRIPTION_MSG = ('This spot controller is oversubscribed. '
+                        'Use another one instead.')
+
 
 class UserSignal(enum.Enum):
     """The signal to be sent to the user."""

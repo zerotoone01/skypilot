@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import uuid
 import yaml
 
+import filelock
 import jinja2
 import rich.console as rich_console
 import rich.progress as rich_progress
@@ -82,7 +83,7 @@ _MAX_CLUSTER_NAME_LEN = 37
 
 # Allow each CPU thread take 2 tasks.
 # Note: This value cannot be too small, otherwise OOM issue may occur.
-DEFAULT_TASK_CPU_DEMAND = 0.05
+DEFAULT_TASK_CPU_DEMAND = 0.1
 
 SKY_RESERVED_CLUSTER_NAMES = [spot_lib.SPOT_CONTROLLER_NAME]
 
@@ -1451,3 +1452,38 @@ def stop_handler(signum, frame):
                    f'running after Ctrl-Z.{colorama.Style.RESET_ALL}')
     kill_children_processes()
     sys.exit(exceptions.SIGTSTP_CODE)
+
+
+class FilelockQueue:
+
+    def __init__(self, lock_path: str, max_size: int):
+        # TODO(mraheja): remove pylint disabling when filelock
+        # version updated
+        # pylint: disable=abstract-class-instantiated
+        self._lock = filelock.FileLock(lock_path)
+        self._counter_path = lock_path + '.counter'
+        with self._lock:
+            if not os.path.exists(self._counter_path):
+                with open(self._counter_path, 'w') as f:
+                    f.write('0')
+        self._max_size = max_size
+
+    def enter(self) -> bool:
+        with self._lock:
+            with open(self._counter_path, 'r+') as f:
+                r = int(f.read()) + 1
+                if r <= self._max_size:
+                    f.seek(0)
+                    f.write(str(r))
+                    f.truncate()
+                    return True
+                return False
+
+    def exit(self) -> None:
+        with self._lock:
+            with open(self._counter_path, 'r+') as f:
+                r = int(f.read()) - 1
+                assert r >= 0, r
+                f.seek(0)
+                f.write(str(r))
+                f.truncate()

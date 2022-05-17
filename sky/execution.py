@@ -13,11 +13,12 @@ Current task launcher:
   - ray exec + each task's commands
 """
 import enum
+import hashlib
 import os
 import sys
 import time
 import traceback
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union, Tuple
 
 import filelock
 
@@ -30,6 +31,7 @@ from sky import spot
 from sky.backends import backend_utils
 from sky.backends import timeline
 from sky.backends.cloud_vm_ray_backend import _LOCK_FILENAME
+from sky.spot import spot_utils
 
 logger = sky_logging.init_logger(__name__)
 
@@ -211,16 +213,16 @@ def launch(dag: sky.Dag,
     if not is_spot_controller_task:
         backend_utils.check_cluster_name_not_reserved(
             cluster_name, operation_str='sky.launch')
-    _execute(dag=dag,
-             dryrun=dryrun,
-             teardown=teardown,
-             stream_logs=stream_logs,
-             handle=None,
-             backend=backend,
-             optimize_target=optimize_target,
-             cluster_name=cluster_name,
-             detach_run=detach_run,
-             idle_minutes_to_autostop=idle_minutes_to_autostop)
+    return _execute(dag=dag,
+                    dryrun=dryrun,
+                    teardown=teardown,
+                    stream_logs=stream_logs,
+                    handle=None,
+                    backend=backend,
+                    optimize_target=optimize_target,
+                    cluster_name=cluster_name,
+                    detach_run=detach_run,
+                    idle_minutes_to_autostop=idle_minutes_to_autostop)
 
 
 @timeline.event
@@ -262,16 +264,17 @@ def exec(  # pylint: disable=redefined-builtin
 
 
 @timeline.event
-def exec_or_launch(dag: sky.Dag,
-                   dryrun: bool = False,
-                   teardown: bool = False,
-                   stream_logs: bool = True,
-                   backend: Optional[backends.Backend] = None,
-                   optimize_target: OptimizeTarget = OptimizeTarget.COST,
-                   cluster_name: Optional[str] = None,
-                   detach_run: bool = False,
-                   idle_minutes_to_autostop: Optional[int] = None,
-                   is_spot_controller_task: bool = False):
+def exec_or_launch(
+        dag: sky.Dag,
+        dryrun: bool = False,
+        teardown: bool = False,
+        stream_logs: bool = True,
+        backend: Optional[backends.Backend] = None,
+        optimize_target: OptimizeTarget = OptimizeTarget.COST,
+        cluster_name: Optional[str] = None,
+        detach_run: bool = False,
+        idle_minutes_to_autostop: Optional[int] = None,
+        is_spot_controller_task: bool = False) -> None:
     """Try execute on the cluster. If the cluster is not up,
     then launch the cluster. This helps improving efficiency significantly."""
 
@@ -291,32 +294,86 @@ def exec_or_launch(dag: sky.Dag,
             cluster_name)
         if handle is not None and status == global_user_state.ClusterStatus.UP:
             lock.release()
-            _execute(dag=dag,
-                     dryrun=dryrun,
-                     teardown=teardown,
-                     stream_logs=stream_logs,
-                     handle=handle,
-                     backend=backend,
-                     optimize_target=optimize_target,
-                     stages=[
-                         Stage.SYNC_WORKDIR,
-                         Stage.EXEC,
-                         Stage.SYNC_FILE_MOUNTS,
-                     ],
-                     cluster_name=cluster_name,
-                     detach_run=detach_run)
+            return _execute(dag=dag,
+                            dryrun=dryrun,
+                            teardown=teardown,
+                            stream_logs=stream_logs,
+                            handle=handle,
+                            backend=backend,
+                            optimize_target=optimize_target,
+                            stages=[
+                                Stage.SYNC_WORKDIR,
+                                Stage.EXEC,
+                                Stage.SYNC_FILE_MOUNTS,
+                            ],
+                            cluster_name=cluster_name,
+                            detach_run=detach_run)
         else:
-            launch(dag=dag,
-                   dryrun=dryrun,
-                   teardown=teardown,
-                   stream_logs=stream_logs,
-                   backend=backend,
-                   optimize_target=optimize_target,
-                   cluster_name=cluster_name,
-                   detach_run=detach_run,
-                   idle_minutes_to_autostop=idle_minutes_to_autostop,
-                   is_spot_controller_task=is_spot_controller_task)
+            return launch(dag=dag,
+                          dryrun=dryrun,
+                          teardown=teardown,
+                          stream_logs=stream_logs,
+                          backend=backend,
+                          optimize_target=optimize_target,
+                          cluster_name=cluster_name,
+                          detach_run=detach_run,
+                          idle_minutes_to_autostop=idle_minutes_to_autostop,
+                          is_spot_controller_task=is_spot_controller_task)
     finally:
         # file lock can be released multiple times, so we just release
         # it here anyway
         lock.release()
+
+
+def exec_spot(user_yaml_path: str,
+              cluster_name: Optional[str] = None,
+              detach_run: bool = False):
+    backend = backends.CloudVmRayBackend()
+
+    def _get_queue(index: int):
+        queue_size = spot_utils.OVERSUBSCRIPTION_RATIO * 8
+        name = spot.SPOT_CONTROLLER_NAME + f'-{index}'
+        return backend_utils.FilelockQueue(
+            os.path.expanduser(_LOCK_FILENAME.format(name)) + '.queue',
+            queue_size)
+
+    controller_index = 1
+
+    while True:
+        print(f">>>>>>>>> controller_index = {controller_index}")
+        queue = _get_queue(controller_index)
+
+        if queue.enter():
+            try:
+                if controller_index == 1:
+                    controller_name = spot.SPOT_CONTROLLER_NAME
+                else:
+                    controller_name = spot.SPOT_CONTROLLER_NAME + f'-{controller_index}'
+                yaml_path = backend_utils.fill_template(
+                    spot.SPOT_CONTROLLER_TEMPLATE, {
+                        'user_yaml_path': user_yaml_path,
+                        'spot_controller': controller_name,
+                        'cluster_name': cluster_name,
+                        'sky_remote_path': backend_utils.SKY_REMOTE_PATH,
+                    },
+                    output_prefix=spot.SPOT_CONTROLLER_YAML_PREFIX)
+                with sky.Dag() as dag:
+                    task = sky.Task.from_yaml(yaml_path)
+                    assert len(task.resources) == 1
+
+                exec_or_launch(
+                    dag,
+                    stream_logs=True,
+                    cluster_name=controller_name,
+                    detach_run=detach_run,
+                    backend=backend,
+                    idle_minutes_to_autostop=spot.
+                    SPOT_CONTROLLER_IDLE_MINUTES_TO_AUTOSTOP,
+                    is_spot_controller_task=True)
+                return
+            finally:
+                queue.exit()
+        else:
+            child = hashlib.sha1(
+                f'{cluster_name}_{controller_index}'.encode()).digest()[-1] % 2
+            controller_index = controller_index * 2 + child
