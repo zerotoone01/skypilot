@@ -32,6 +32,10 @@ setup: |
         mv google-cloud-sdk ~/ && \
         ~/google-cloud-sdk/install.sh -q && \
         echo 'source ~/google-cloud-sdk/path.bash.inc' >> ~/.bashrc) 2>&1 > /dev/null
+
+      # start server
+      pip install flask
+      python -m sky.spot.server
   fi
   touch $mark_file
 

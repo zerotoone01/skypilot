@@ -264,17 +264,16 @@ def exec(  # pylint: disable=redefined-builtin
 
 
 @timeline.event
-def exec_or_launch(
-        dag: sky.Dag,
-        dryrun: bool = False,
-        teardown: bool = False,
-        stream_logs: bool = True,
-        backend: Optional[backends.Backend] = None,
-        optimize_target: OptimizeTarget = OptimizeTarget.COST,
-        cluster_name: Optional[str] = None,
-        detach_run: bool = False,
-        idle_minutes_to_autostop: Optional[int] = None,
-        is_spot_controller_task: bool = False) -> None:
+def exec_or_launch(dag: sky.Dag,
+                   dryrun: bool = False,
+                   teardown: bool = False,
+                   stream_logs: bool = True,
+                   backend: Optional[backends.Backend] = None,
+                   optimize_target: OptimizeTarget = OptimizeTarget.COST,
+                   cluster_name: Optional[str] = None,
+                   detach_run: bool = False,
+                   idle_minutes_to_autostop: Optional[int] = None,
+                   is_spot_controller_task: bool = False):
     """Try execute on the cluster. If the cluster is not up,
     then launch the cluster. This helps improving efficiency significantly."""
 
@@ -294,20 +293,20 @@ def exec_or_launch(
             cluster_name)
         if handle is not None and status == global_user_state.ClusterStatus.UP:
             lock.release()
-            return _execute(dag=dag,
-                            dryrun=dryrun,
-                            teardown=teardown,
-                            stream_logs=stream_logs,
-                            handle=handle,
-                            backend=backend,
-                            optimize_target=optimize_target,
-                            stages=[
-                                Stage.SYNC_WORKDIR,
-                                Stage.EXEC,
-                                Stage.SYNC_FILE_MOUNTS,
-                            ],
-                            cluster_name=cluster_name,
-                            detach_run=detach_run)
+            _execute(dag=dag,
+                     dryrun=dryrun,
+                     teardown=teardown,
+                     stream_logs=stream_logs,
+                     handle=handle,
+                     backend=backend,
+                     optimize_target=optimize_target,
+                     stages=[
+                         Stage.SYNC_WORKDIR,
+                         Stage.SYNC_FILE_MOUNTS,
+                     ],
+                     cluster_name=cluster_name,
+                     detach_run=detach_run)
+            return handle
         else:
             return launch(dag=dag,
                           dryrun=dryrun,
@@ -340,7 +339,7 @@ def exec_spot(user_yaml_path: str,
     controller_index = 1
 
     while True:
-        print(f">>>>>>>>> controller_index = {controller_index}")
+        print(f'>>>>>>>>> controller_index = {controller_index}')
         queue = _get_queue(controller_index)
 
         if queue.enter():
@@ -361,7 +360,7 @@ def exec_spot(user_yaml_path: str,
                     task = sky.Task.from_yaml(yaml_path)
                     assert len(task.resources) == 1
 
-                exec_or_launch(
+                handle = exec_or_launch(
                     dag,
                     stream_logs=True,
                     cluster_name=controller_name,
@@ -370,6 +369,20 @@ def exec_spot(user_yaml_path: str,
                     idle_minutes_to_autostop=spot.
                     SPOT_CONTROLLER_IDLE_MINUTES_TO_AUTOSTOP,
                     is_spot_controller_task=True)
+                if handle is not None:
+                    head_ip = backend_utils.get_head_ip(handle,
+                                                        use_cached_head_ip=True)
+                    import requests
+                    port = 5000
+                    job_id = int(
+                        requests.post(
+                            f'http://{head_ip}:{port}/next_job_id').text)
+                    r = requests.post(f'http://{head_ip}:{port}/spot_launch',
+                                      data={
+                                          'job_id': job_id,
+                                          'cluster_name': cluster_name
+                                      })
+                    assert r.ok
                 return
             finally:
                 queue.exit()
