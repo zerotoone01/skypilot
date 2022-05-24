@@ -772,8 +772,8 @@ class RetryingVmProvisioner(object):
         log_path = os.path.join(self.log_dir, 'provision.log')
         log_abs_path = os.path.abspath(log_path)
         tail_cmd = f'tail -n100 -f {log_path}'
-        logger.info('To view detailed progress: '
-                    f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        # logger.info('To view detailed progress: '
+        #             f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
 
         # Get previous cluster status
         prev_cluster_status = backend_utils.refresh_cluster_status_handle(
@@ -1245,10 +1245,7 @@ class CloudVmRayBackend(backends.Backend):
                 True)
         logger.info(
             f'{colorama.Fore.CYAN}Creating a new cluster: "{cluster_name}" '
-            f'[{task.num_nodes}x {to_provision}].{colorama.Style.RESET_ALL}\n'
-            'Tip: to reuse an existing cluster, '
-            'specify --cluster (-c). '
-            'Run `sky status` to see existing clusters.')
+            f'[{task.num_nodes}x {to_provision}].{colorama.Style.RESET_ALL}\n')
         return RetryingVmProvisioner.ToProvisionConfig(cluster_name,
                                                        to_provision,
                                                        task.num_nodes)
@@ -1452,8 +1449,8 @@ class CloudVmRayBackend(backends.Backend):
             f' -> '
             f'{style.BRIGHT}{SKY_REMOTE_WORKDIR}{style.RESET_ALL}')
         tail_cmd = f'tail -n100 -f {log_path}'
-        logger.info('To view detailed progress: '
-                    f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        # logger.info('To view detailed progress: '
+        #             f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
         with backend_utils.safe_console_status('[bold cyan]Syncing[/]'):
             backend_utils.run_in_parallel(_sync_workdir_node, ip_list)
 
@@ -1627,8 +1624,8 @@ class CloudVmRayBackend(backends.Backend):
                         f'Symlink contents are not uploaded.{style.RESET_ALL}')
 
         tail_cmd = f'tail -n100 -f {log_path}'
-        logger.info('To view detailed progress: '
-                    f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        # logger.info('To view detailed progress: '
+        #             f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
 
         for dst, src in file_mounts.items():
             # TODO: room for improvement.  Here there are many moving parts
