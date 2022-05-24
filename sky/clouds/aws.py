@@ -159,7 +159,10 @@ class AWS(clouds.Cloud):
         return isinstance(other, AWS)
 
     @classmethod
-    def get_default_instance_type(cls) -> str:
+    def get_default_instance_type(cls,
+                                  accelerators: Optional[Dict[str, int]] = None
+                                 ) -> str:
+        del accelerators  # unused
         # 8 vCpus, 32 GB RAM.  Prev-gen (as of 2021) general purpose.
         return 'm4.2xlarge'
 
@@ -274,8 +277,8 @@ class AWS(clouds.Cloud):
             return True, None
         return False, 'AWS credentials is not set.' + help_str
 
-    def get_credential_file_mounts(self) -> Tuple[Dict[str, str], List[str]]:
-        return {'~/.aws': '~/.aws'}, []
+    def get_credential_file_mounts(self) -> Dict[str, str]:
+        return {'~/.aws': '~/.aws'}
 
     def instance_type_exists(self, instance_type):
         return service_catalog.instance_type_exists(instance_type, clouds='aws')

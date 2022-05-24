@@ -67,7 +67,10 @@ class Azure(clouds.Cloud):
         return isinstance(other, Azure)
 
     @classmethod
-    def get_default_instance_type(cls):
+    def get_default_instance_type(cls,
+                                  accelerators: Optional[Dict[str, int]] = None
+                                 ) -> str:
+        del accelerators
         # 8 vCpus, 32 GB RAM.  Prev-gen (as of 2021) general purpose.
         return 'Standard_D8_v4'
 
@@ -243,8 +246,8 @@ class Azure(clouds.Cloud):
             return True, None
         return False, 'Azure credentials not set.' + help_str
 
-    def get_credential_file_mounts(self) -> Tuple[Dict[str, str], List[str]]:
-        return {'~/.azure': '~/.azure'}, []
+    def get_credential_file_mounts(self) -> Dict[str, str]:
+        return {'~/.azure': '~/.azure'}
 
     def instance_type_exists(self, instance_type):
         return service_catalog.instance_type_exists(instance_type,
