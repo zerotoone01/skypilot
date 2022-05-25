@@ -1,10 +1,7 @@
 name: roberta
 
 resources:
-    # accelerators: A100:16
-    accelerators: V100:1
-    # accelerators: V100:4
-    # accelerators: V100:4
+    accelerators: V100:4
     # use_spot: true
     # spot_recovery: FAILOVER
 
@@ -12,19 +9,19 @@ num_nodes: 1
 
 file_mounts:
     /checkpoint:
-        name: roberta-demo-ckpt
+        name: # Fill in your bucket name
         mode: MOUNT
 
-    /data:
-        name: roberta-spot-data
-        mode: MOUNT
+    /data: s3://roberta-demo-data
 
 setup: |
     # Fill in your wandb key: copy from https://wandb.ai/authorize
-    echo export WANDB_API_KEY=[YOUR-WANDB-API-KEY] >> ~/.bashrc
+    echo export WANDB_API_KEY=[YOUR-WANDB-KEY] >> ~/.bashrc
 
     pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu113
-    pip install wandb tensorboardX numpy>=1.22.0
+    pip install wandb tensorboardX
+    pip "numpy>=1.22.0"
+    pip install -U numpy
 
     git clone https://github.com/facebookresearch/fairseq.git
     cd fairseq
@@ -59,7 +56,7 @@ setup: |
             --trainpref wikitext-103-raw/wiki.train.bpe \
             --validpref wikitext-103-raw/wiki.valid.bpe \
             --testpref wikitext-103-raw/wiki.test.bpe \
-            --destdir data-bin/wikitext-103 \
+            --destdir /data \
             --workers 60
     fi
 
