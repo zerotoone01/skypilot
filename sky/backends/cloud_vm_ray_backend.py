@@ -771,7 +771,7 @@ class RetryingVmProvisioner(object):
         # Get log_path name
         log_path = os.path.join(self.log_dir, 'provision.log')
         log_abs_path = os.path.abspath(log_path)
-        tail_cmd = f'tail -n100 -f {log_path}'
+        # tail_cmd = f'tail -n100 -f {log_path}'
         # logger.info('To view detailed progress: '
         #             f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
 
@@ -1448,7 +1448,7 @@ class CloudVmRayBackend(backends.Backend):
             f'{style.BRIGHT}{workdir}{style.RESET_ALL}'
             f' -> '
             f'{style.BRIGHT}{SKY_REMOTE_WORKDIR}{style.RESET_ALL}')
-        tail_cmd = f'tail -n100 -f {log_path}'
+        # tail_cmd = f'tail -n100 -f {log_path}'
         # logger.info('To view detailed progress: '
         #             f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
         with backend_utils.safe_console_status('[bold cyan]Syncing[/]'):
@@ -1625,7 +1625,7 @@ class CloudVmRayBackend(backends.Backend):
                         f'{fore.YELLOW}Source path {src!r} is a symlink. '
                         f'Symlink contents are not uploaded.{style.RESET_ALL}')
 
-        tail_cmd = f'tail -n100 -f {log_path}'
+        # tail_cmd = f'tail -n100 -f {log_path}'
         # logger.info('To view detailed progress: '
         #             f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
 
