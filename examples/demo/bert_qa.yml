@@ -2,7 +2,6 @@ name: bert_qa
 
 resources:
     accelerators: V100:1
-    cloud: aws
     use_spot: true
     spot_recovery: FAILOVER
 
