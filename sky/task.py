@@ -389,6 +389,17 @@ class Task:
     def set_auth_config(self, auth_config: Dict[str, Dict[str, str]]):
         self.auth_config = auth_config
 
+    def _set_auth_config(self, cluster_name: str):
+        entrypoint = os.path.expanduser(
+            '~/.sky/local/{}.yml'.format(cluster_name))
+        with open(entrypoint, 'r') as f:
+            try:
+                config = yaml.safe_load(f)
+                auth_config = config['auth']
+            except yaml.YAMLError as e:
+                raise e
+        self.auth_config = auth_config
+
     def set_resources(self, resources: Union['resources_lib.Resources',
                                              Set['resources_lib.Resources']]):
         """Sets the required resources to execute this task.

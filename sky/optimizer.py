@@ -747,6 +747,18 @@ def _cloud_in_list(cloud: clouds.Cloud, lst: List[clouds.Cloud]) -> bool:
     return is_cloud
 
 
+def _get_matching_local_clouds(resources):
+    records = global_user_state.get_clusters(include_cloud_clusters=False,
+                                             include_local_clusters=True)
+    local_clouds = []
+    for record in records:
+        handle = record['handle']
+        rec_resources = handle.launched_resources
+        if resources.less_demanding_than(rec_resources):
+            local_clouds.append(rec_resources.cloud)
+    return local_clouds
+
+
 def _filter_out_blocked_launchable_resources(
         launchable_resources: List[resources_lib.Resources],
         blocked_launchable_resources: List[resources_lib.Resources]):
@@ -790,8 +802,10 @@ def _fill_in_launchable_resources(
         elif resources.is_launchable():
             launchable[resources] = [resources]
         else:
-            clouds_list = [resources.cloud
-                          ] if resources.cloud is not None else enabled_clouds
+            clouds_list = [
+                resources.cloud
+            ] if resources.cloud is not None else enabled_clouds + _get_matching_local_clouds(
+                resources)
             all_fuzzy_candidates = set()
             for cloud in clouds_list:
                 (feasible_resources, fuzzy_candidate_list
@@ -811,7 +825,6 @@ def _fill_in_launchable_resources(
                                 f'{colorama.Fore.CYAN}'
                                 f'{sorted(all_fuzzy_candidates)}'
                                 f'{colorama.Style.RESET_ALL}')
-
         launchable[resources] = _filter_out_blocked_launchable_resources(
             launchable[resources], blocked_launchable_resources)
 

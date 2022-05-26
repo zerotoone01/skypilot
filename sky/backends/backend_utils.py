@@ -724,6 +724,42 @@ def rsync_no_handle(ip: str, source: str, target: str, ssh_user: str,
         f'ssh -i {ssh_key} {ssh_user}@{ip}')
 
 
+def poll_local_resources(ips: List[str], auth_config: Dict[str, str]) -> dict:
+    ssh_user = auth_config['ssh_user']
+    ssh_key = auth_config['ssh_private_key']
+    remote_resource_path = '~/.sky/cluster_resources.py'
+    head_ip = ips[0]
+
+    code = \
+    textwrap.dedent("""\
+        import ray
+
+        ray.init(address = 'ray://localhost:10001', _redis_password='5241590000000000')
+        print(ray.available_resources())
+        """)
+
+    with tempfile.NamedTemporaryFile('w', prefix='sky_app_') as fp:
+        fp.write(code)
+        fp.flush()
+        rsync_no_handle(head_ip, fp.name, remote_resource_path, ssh_user,
+                        ssh_key)
+
+        rc, output, _ = run_command_on_ip_via_ssh(
+            head_ip,
+            f'python3 {remote_resource_path}',
+            ssh_user=ssh_user,
+            ssh_private_key=ssh_key,
+            stream_logs=False,
+            require_outputs=True)
+
+        if rc:
+            raise ValueError('Failed to get available resources. ')
+
+        # Convert output into a custom resources dict
+        available_resources = ast.literal_eval(output)
+    return available_resources
+
+
 def get_local_custom_resources(
         ips: List[str], auth_config: Dict[str, str]) -> List[Dict[str, int]]:
     """Gets the custom accelerators for the local cluster.

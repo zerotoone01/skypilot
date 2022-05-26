@@ -104,6 +104,7 @@ class Local(clouds.Cloud):
 
     def get_feasible_launchable_resources(self,
                                           resources: 'resources_lib.Resources'):
+        resources = resources.copy(cloud=self)
         return ([resources], [])
 
     def check_credentials(self) -> Tuple[bool, Optional[str]]:

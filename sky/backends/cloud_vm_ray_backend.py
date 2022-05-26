@@ -855,6 +855,17 @@ class RetryingVmProvisioner(object):
                 'region_name': region.name,
                 'zone_str': zone_str,
             }
+
+            if isinstance(to_provision.cloud, clouds.Local):
+                available_resources = backend_utils.poll_local_resources(
+                    to_provision.local_ips, auth_config)
+                if 'GPU' not in available_resources:
+                    logger.info(
+                        f'Local cluster {cluster_name} is full. Spilling over to cloud.'
+                    )
+                    # Break out of for loop to raise ResourcesUnavailableError
+                    #break
+
             status, stdout, stderr = self._gang_schedule_ray_up(
                 to_provision.cloud, num_nodes, cluster_config_file,
                 log_abs_path, stream_logs, logging_info, to_provision.use_spot)
@@ -1193,7 +1204,12 @@ class RetryingVmProvisioner(object):
                     f'\n{style.BRIGHT}Provision failed for {num_nodes}x '
                     f'{to_provision}. Trying other launchable resources '
                     f'(if any).{style.RESET_ALL}')
-                if not cluster_exists:
+                if isinstance(resources.cloud, clouds.Local):
+                    new_cluster_name = backend_utils.generate_cluster_name()
+                    to_provision_config.cluster_name = new_cluster_name
+                    cluster_name = new_cluster_name
+                if not cluster_exists or isinstance(resources.cloud,
+                                                    clouds.Local):
                     # Add failed resources to the blocklist, only when it
                     # is in fallback mode.
                     self._blocked_launchable_resources.add(to_provision)
@@ -1442,6 +1458,10 @@ class CloudVmRayBackend(backends.Backend):
                                                     local_wheel_path)
                 config_dict = provisioner.provision_with_retries(
                     task, to_provision_config, dryrun, stream_logs)
+
+                new_cluster_name = to_provision_config.cluster_name
+                if new_cluster_name != cluster_name:
+                    cluster_name = new_cluster_name
             except exceptions.ResourcesUnavailableError as e:
                 # Do not remove the stopped cluster from the global state
                 # if failed to start.

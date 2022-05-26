@@ -116,6 +116,11 @@ def _execute(dag: sky.Dag,
                 dag = sky.optimize(dag, minimize=optimize_target)
                 task = dag.tasks[0]  # Keep: dag may have been deep-copied.
                 assert task.best_resources is not None, task
+                # If task's resource is local...
+                # Set cluster name as local cluster name
+                if task.best_resources.local_ips is not None:
+                    cluster_name = str(task.best_resources.cloud)
+                    task._set_auth_config(cluster_name)
 
     backend.register_info(dag=dag, optimize_target=optimize_target)
 
