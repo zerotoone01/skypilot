@@ -954,6 +954,7 @@ class S3Store(AbstractStore):
                     f'[bold cyan]Deleting [green]bucket {bucket_name}'):
                 subprocess.check_output(remove_command.split(' '))
         except subprocess.CalledProcessError as e:
+            # Logging with error.
             logger.error(e.output)
             raise exceptions.StorageBucketDeleteError(
                 f'Failed to delete S3 bucket {bucket_name}.')
