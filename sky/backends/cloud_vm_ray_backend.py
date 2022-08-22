@@ -41,6 +41,7 @@ from sky.skylet import log_lib
 from sky.usage import usage_lib
 from sky.utils import common_utils
 from sky.utils import command_runner
+from sky.utils import env_options
 from sky.utils import log_utils
 from sky.utils import subprocess_utils
 from sky.utils import timeline
@@ -885,9 +886,10 @@ class RetryingVmProvisioner(object):
         # Get log_path name
         log_path = os.path.join(self.log_dir, 'provision.log')
         log_abs_path = os.path.abspath(log_path)
-        tail_cmd = f'tail -n100 -f {log_path}'
-        logger.info('To view detailed progress: '
-                    f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        if not env_options.Options.MINIMIZE_LOGGING.get():
+            tail_cmd = f'tail -n100 -f {log_path}'
+            logger.info('To view detailed progress: '
+                        f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
 
         # Get previous cluster status
         prev_cluster_status = backend_utils.refresh_cluster_status_handle(
@@ -2596,13 +2598,15 @@ class CloudVmRayBackend(backends.Backend):
                         f'{colorama.Style.RESET_ALL}\n'
                         'Run `sky status` to see existing clusters.')
         else:
+            tip_str = ''
+            if not env_options.Options.MINIMIZE_LOGGING.get():
+                tip_str = ('\nTip: to reuse an existing cluster, '
+                'specify --cluster (-c). '
+                'Run `sky status` to see existing clusters.')
             logger.info(
                 f'{colorama.Fore.CYAN}Creating a new cluster: "{cluster_name}" '
                 f'[{task.num_nodes}x {to_provision}].'
-                f'{colorama.Style.RESET_ALL}\n'
-                'Tip: to reuse an existing cluster, '
-                'specify --cluster (-c). '
-                'Run `sky status` to see existing clusters.')
+                f'{colorama.Style.RESET_ALL}{tip_str}')
         return RetryingVmProvisioner.ToProvisionConfig(cluster_name,
                                                        to_provision,
                                                        task.num_nodes)
@@ -2669,9 +2673,10 @@ class CloudVmRayBackend(backends.Backend):
                         f'{fore.YELLOW}Source path {src!r} is a symlink. '
                         f'Symlink contents are not uploaded.{style.RESET_ALL}')
 
-        tail_cmd = f'tail -n100 -f {log_path}'
-        logger.info('To view detailed progress: '
-                    f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        if not env_options.Options.MINIMIZE_LOGGING.get():        
+            tail_cmd = f'tail -n100 -f {log_path}'
+            logger.info('To view detailed progress: '
+                        f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
 
         for dst, src in file_mounts.items():
             # TODO: room for improvement.  Here there are many moving parts
