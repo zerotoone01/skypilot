@@ -6,8 +6,9 @@ from sky.utils import env_options
 
 # If the SKYPILOT_MINIMIZE_LOGGING environment variable is set to True,
 # remove logging prefixes and unnecessary information in optimizer
-FORMAT = (None if env_options.Options.MINIMIZE_LOGGING.get() else
-          '%(levelname).1s %(asctime)s %(filename)s:%(lineno)d] %(message)s')
+# FORMAT = (None if env_options.Options.MINIMIZE_LOGGING.get() else
+#           '%(levelname).1s %(asctime)s %(filename)s:%(lineno)d] %(message)s')
+FORMAT = None
 DATE_FORMAT = '%m-%d %H:%M:%S'
 
 

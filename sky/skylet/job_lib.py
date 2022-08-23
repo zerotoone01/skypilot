@@ -440,7 +440,7 @@ def format_job_queue(jobs: List[Dict[str, Any]]):
     """
     job_table = log_utils.create_table([
         'ID', 'NAME', 'SUBMITTED', 'STARTED', 'DURATION', 'RESOURCES', 'STATUS',
-        'LOG'
+        # 'LOG'
     ])
     for job in jobs:
         job_table.add_row([
@@ -453,7 +453,7 @@ def format_job_queue(jobs: List[Dict[str, Any]]):
                                              absolute=True),
             job['resources'],
             job['status'].value,
-            job['log_path'],
+            # job['log_path'],
         ])
     return job_table
 

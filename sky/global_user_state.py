@@ -25,7 +25,7 @@ if typing.TYPE_CHECKING:
 
 _ENABLED_CLOUDS_KEY = 'enabled_clouds'
 
-_DB_PATH = os.path.expanduser('~/.sky/state.db')
+_DB_PATH = os.path.expanduser('~/.sky/demo-state.db')
 pathlib.Path(_DB_PATH).parents[0].mkdir(parents=True, exist_ok=True)
 
 

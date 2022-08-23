@@ -172,7 +172,8 @@ def _optimize_file_mounts(yaml_path: str) -> None:
     #  - use a remote command to move all runtime files to their right places.
 
     # Local tmp dir holding runtime files.
-    local_runtime_files_dir = tempfile.mkdtemp()
+    local_runtime_files_dir = os.path.expanduser('~/.sky/.runtime_files')
+    os.makedirs(local_runtime_files_dir, exist_ok=True)
     new_file_mounts = {_REMOTE_RUNTIME_FILES_DIR: local_runtime_files_dir}
 
     # (For remote) Build a command that copies runtime files to their right
@@ -226,7 +227,7 @@ def _optimize_file_mounts(yaml_path: str) -> None:
     all_local_sources = ' '.join(
         local_src for local_src in file_mounts.values())
     # Takes 10-20 ms on laptop incl. 3 clouds' credentials.
-    subprocess.run(f'cp -r {all_local_sources} {local_runtime_files_dir}/',
+    subprocess.run(f'rsync -az {all_local_sources} {local_runtime_files_dir}/',
                    shell=True,
                    check=True)
 

@@ -412,7 +412,7 @@ def tail_logs(job_owner: str,
             for line in _follow_job_logs(
                     log_file,
                     job_id=job_id,
-                    start_streaming_at='INFO: Tip: use Ctrl-C to exit log'):
+                    start_streaming_at='INFO: All task resources reserved.'):
                 print(line, end='', flush=True)
     else:
         try:

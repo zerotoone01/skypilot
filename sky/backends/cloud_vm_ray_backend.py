@@ -1815,9 +1815,10 @@ class CloudVmRayBackend(backends.Backend):
             f'{style.BRIGHT}{workdir}{style.RESET_ALL}'
             f' -> '
             f'{style.BRIGHT}{SKY_REMOTE_WORKDIR}{style.RESET_ALL}')
-        tail_cmd = f'tail -n100 -f {log_path}'
-        logger.info('To view detailed progress: '
-                    f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        if not env_options.Options.MINIMIZE_LOGGING.get():
+            tail_cmd = f'tail -n100 -f {log_path}'
+            logger.info('To view detailed progress: '
+                        f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
         with backend_utils.safe_console_status('[bold cyan]Syncing[/]'):
             subprocess_utils.run_in_parallel(_sync_workdir_node, runners)
 
@@ -1858,6 +1859,7 @@ class CloudVmRayBackend(backends.Backend):
             runners = command_runner.SSHCommandRunner.make_runner_list(
                 ip_list, *ssh_credentials)
 
+            stream_logs = not env_options.Options.MINIMIZE_LOGGING.get()
             def _setup_node(runner: command_runner.SSHCommandRunner) -> int:
                 runner.rsync(source=setup_sh_path,
                              target=f'/tmp/{setup_file}',
@@ -1871,6 +1873,7 @@ class CloudVmRayBackend(backends.Backend):
                     cmd,
                     log_path=setup_log_path,
                     process_stream=False,
+                    stream_logs=stream_logs,
                 )
 
                 def error_message() -> str:
@@ -1908,7 +1911,13 @@ class CloudVmRayBackend(backends.Backend):
             plural = 's' if num_nodes > 1 else ''
             logger.info(f'{fore.CYAN}Running setup on {num_nodes} node{plural}.'
                         f'{style.RESET_ALL}')
-            subprocess_utils.run_in_parallel(_setup_node, runners)
+            if env_options.Options.MINIMIZE_LOGGING.get():
+                with backend_utils.safe_console_status('[bold cyan]Setup[/]'):
+                    for runner in runners:
+                        _setup_node(runner)
+                    # subprocess_utils.run_in_parallel(_setup_node, runners)
+            else:
+                subprocess_utils.run_in_parallel(_setup_node, runners)
         logger.info(f'{fore.GREEN}Setup completed.{style.RESET_ALL}')
         end = time.time()
         logger.debug(f'Setup took {end - start} seconds.')
@@ -1985,18 +1994,19 @@ class CloudVmRayBackend(backends.Backend):
                     # ssh keep connected after ctrl-c.
                     self.tail_logs(handle, job_id)
         finally:
-            name = handle.cluster_name
-            logger.info(f'{fore.CYAN}Job ID: '
-                        f'{style.BRIGHT}{job_id}{style.RESET_ALL}'
-                        '\nTo cancel the job:\t'
-                        f'{backend_utils.BOLD}sky cancel {name} {job_id}'
-                        f'{backend_utils.RESET_BOLD}'
-                        '\nTo stream the logs:\t'
-                        f'{backend_utils.BOLD}sky logs {name} {job_id}'
-                        f'{backend_utils.RESET_BOLD}'
-                        '\nTo view the job queue:\t'
-                        f'{backend_utils.BOLD}sky queue {name}'
-                        f'{backend_utils.RESET_BOLD}')
+            pass
+            # name = handle.cluster_name
+            # logger.info(f'{fore.CYAN}Job ID: '
+            #             f'{style.BRIGHT}{job_id}{style.RESET_ALL}'
+            #             '\nTo cancel the job:\t'
+            #             f'{backend_utils.BOLD}sky cancel {name} {job_id}'
+            #             f'{backend_utils.RESET_BOLD}'
+            #             '\nTo stream the logs:\t'
+            #             f'{backend_utils.BOLD}sky logs {name} {job_id}'
+            #             f'{backend_utils.RESET_BOLD}'
+            #             '\nTo view the job queue:\t'
+            #             f'{backend_utils.BOLD}sky queue {name}'
+            #             f'{backend_utils.RESET_BOLD}')
 
     def _setup_and_create_job_cmd_on_local_head(
         self,
@@ -2095,18 +2105,19 @@ class CloudVmRayBackend(backends.Backend):
         if isinstance(handle.launched_resources.cloud, clouds.Local):
             stop_str = ''
         if not teardown:
-            logger.info(f'\n{fore.CYAN}Cluster name: '
-                        f'{style.BRIGHT}{name}{style.RESET_ALL}'
-                        '\nTo log into the head VM:\t'
-                        f'{backend_utils.BOLD}ssh {name}'
-                        f'{backend_utils.RESET_BOLD}'
-                        '\nTo submit a job:'
-                        f'\t\t{backend_utils.BOLD}sky exec {name} yaml_file'
-                        f'{backend_utils.RESET_BOLD}'
-                        f'{stop_str}'
-                        '\nTo teardown the cluster:'
-                        f'\t{backend_utils.BOLD}sky down {name}'
-                        f'{backend_utils.RESET_BOLD}')
+            pass
+            # logger.info(f'\n{fore.CYAN}Cluster name: '
+            #             f'{style.BRIGHT}{name}{style.RESET_ALL}'
+            #             '\nTo log into the head VM:\t'
+            #             f'{backend_utils.BOLD}ssh {name}'
+            #             f'{backend_utils.RESET_BOLD}'
+            #             '\nTo submit a job:'
+            #             f'\t\t{backend_utils.BOLD}sky exec {name} yaml_file'
+            #             f'{backend_utils.RESET_BOLD}'
+            #             f'{stop_str}'
+            #             '\nTo teardown the cluster:'
+            #             f'\t{backend_utils.BOLD}sky down {name}'
+            #             f'{backend_utils.RESET_BOLD}')
             if handle.tpu_delete_script is not None:
                 logger.info('Tip: `sky down` will delete launched TPU(s) too.')
 
@@ -2645,7 +2656,8 @@ class CloudVmRayBackend(backends.Backend):
         symlink_commands = []
         fore = colorama.Fore
         style = colorama.Style
-        logger.info(f'{fore.CYAN}Processing file mounts.{style.RESET_ALL}')
+        if not env_options.Options.MINIMIZE_LOGGING.get():
+            logger.info(f'{fore.CYAN}Processing file mounts.{style.RESET_ALL}')
         start = time.time()
         ip_list = backend_utils.get_node_ips(handle.cluster_yaml,
                                              handle.launched_nodes)

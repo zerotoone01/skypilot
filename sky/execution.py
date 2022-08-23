@@ -221,21 +221,22 @@ def _execute(
                 backend.teardown_ephemeral_storage(task)
                 backend.teardown(handle, terminate=True)
     finally:
+        pass
         # UX: print live clusters to make users aware (to save costs).
         # Needed because this finally doesn't always get executed on errors.
         # Disable the usage collection for this status command.
-        env = dict(os.environ,
-                   **{env_options.Options.DISABLE_LOGGING.value: '1'})
-        if cluster_name == spot.SPOT_CONTROLLER_NAME:
-            # For spot controller task, it requires a while to have the
-            # managed spot status shown in the status table.
-            time.sleep(0.5)
-            subprocess_utils.run(
-                f'sky spot status | head -n {_MAX_SPOT_JOB_LENGTH}')
-        else:
-            subprocess_utils.run('sky status', env=env)
-        print()
-        print('\x1b[?25h', end='')  # Show cursor.
+        # env = dict(os.environ,
+        #            **{env_options.Options.DISABLE_LOGGING.value: '1'})
+        # if cluster_name == spot.SPOT_CONTROLLER_NAME:
+        #     # For spot controller task, it requires a while to have the
+        #     # managed spot status shown in the status table.
+        #     time.sleep(0.5)
+        #     subprocess_utils.run(
+        #         f'sky spot status | head -n {_MAX_SPOT_JOB_LENGTH}')
+        # else:
+        #     subprocess_utils.run('sky status', env=env)
+        # print()
+        # print('\x1b[?25h', end='')  # Show cursor.
 
 
 @timeline.event
@@ -361,10 +362,10 @@ def spot_launch(
     resources = list(task.resources)[0]
 
     change_default_value = dict()
-    if not resources.use_spot_specified:
+    if not resources.use_spot_specified and not env_options.Options.MINIMIZE_LOGGING.get():
         logger.info('Field use_spot not specified; defaulting to True.')
         change_default_value['use_spot'] = True
-    if resources.spot_recovery is None:
+    if resources.spot_recovery is None and not env_options.Options.MINIMIZE_LOGGING.get():
         logger.info('No spot recovery strategy specified; defaulting to '
                     f'{spot.SPOT_DEFAULT_STRATEGY}.')
         change_default_value['spot_recovery'] = spot.SPOT_DEFAULT_STRATEGY
@@ -383,20 +384,21 @@ def spot_launch(
     # Check the file mounts in the task.
     # Disallow all local file mounts (copy mounts).
     if task.workdir is not None:
-        with ux_utils.print_exception_no_traceback():
-            raise exceptions.NotSupportedError(
-                'Workdir is currently not allowed for managed spot jobs.\n'
-                'Hint: use Storage to auto-upload the workdir to a cloud '
-                'bucket.')
-    copy_mounts = task.get_local_to_remote_file_mounts()
-    if copy_mounts:
-        local_sources = '\t' + '\n\t'.join(
-            src for _, src in copy_mounts.items())
-        with ux_utils.print_exception_no_traceback():
-            raise exceptions.NotSupportedError(
-                'Local file mounts are currently not allowed for managed spot '
-                f'jobs.\nFound local source paths:\n{local_sources}\nHint: use '
-                'Storage to auto-upload local files to a cloud bucket.')
+        task.workdir = None
+    #     with ux_utils.print_exception_no_traceback():
+    #         raise exceptions.NotSupportedError(
+    #             'Workdir is currently not allowed for managed spot jobs.\n'
+    #             'Hint: use Storage to auto-upload the workdir to a cloud '
+    #             'bucket.')
+    # copy_mounts = task.get_local_to_remote_file_mounts()
+    # if copy_mounts:
+    #     local_sources = '\t' + '\n\t'.join(
+    #         src for _, src in copy_mounts.items())
+    #     with ux_utils.print_exception_no_traceback():
+    #         raise exceptions.NotSupportedError(
+    #             'Local file mounts are currently not allowed for managed spot '
+    #             f'jobs.\nFound local source paths:\n{local_sources}\nHint: use '
+    #             'Storage to auto-upload local files to a cloud bucket.')
 
     # Copy the local source to a bucket. The task will not be executed locally,
     # so we need to copy the files to the bucket manually here before sending to

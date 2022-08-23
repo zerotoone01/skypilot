@@ -47,9 +47,9 @@ def show_status_table(cluster_records: List[Dict[str, Any]], show_all: bool):
         StatusColumn('STATUS', _get_status),
         StatusColumn('DURATION', _get_duration, show_by_default=False),
         StatusColumn('AUTOSTOP', _get_autostop),
-        StatusColumn('COMMAND',
-                     _get_command,
-                     trunc_length=_COMMAND_TRUNC_LENGTH if not show_all else 0),
+        # StatusColumn('COMMAND',
+        #              _get_command,
+        #              trunc_length=_COMMAND_TRUNC_LENGTH if not show_all else 0),
         StatusColumn('HOURLY_PRICE', _get_price, show_by_default=False)
     ]
 
