@@ -1110,6 +1110,7 @@ def queue(clusters: Tuple[str], skip_finished: bool, all_users: bool):
 
     unsupported_clusters = []
     for cluster in clusters:
+        backend_utils.refresh_cluster_status_handle(cluster)
         try:
             job_table = core.queue(cluster, skip_finished, all_users)
         except exceptions.NotSupportedError as e:
