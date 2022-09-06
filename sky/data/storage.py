@@ -27,11 +27,15 @@ StorageStatus = global_user_state.StorageStatus
 # Max number of objects a GCS bucket can be directly deleted with
 _GCS_RM_MAX_OBJS = 256
 
-_BUCKET_FAIL_TO_CONNECT_MESSAGE = (
+_BUCKET_FORBIDDEN_ERROR = (
     'Failed to connect to an existing bucket {name!r}.\n'
     'Please check if:\n  1) the bucket name is taken and/or '
     '\n  2) the bucket permissions are not setup correctly. '
     'Consider using {command} to debug.')
+
+_BUCKET_NOT_FOUND_ERROR = {
+    'Bucket {name!r} not found. Consider using {command} to debug.'
+}
 
 
 class StoreType(enum.Enum):
@@ -864,15 +868,14 @@ class S3Store(AbstractStore):
                 command = f'aws s3 ls {self.name}'
                 with ux_utils.print_exception_no_traceback():
                     raise exceptions.StorageBucketGetError(
-                        _BUCKET_FAIL_TO_CONNECT_MESSAGE.format(
+                        _BUCKET_FORBIDDEN_ERROR .format(
                             name=self.name, command=command)) from e
 
         if self.source is not None and self.source.startswith('s3://'):
             with ux_utils.print_exception_no_traceback():
+                cmd = '`aws s3 ls`'
                 raise exceptions.StorageBucketGetError(
-                    'Attempted to connect to a non-existent bucket: '
-                    f'{self.source}. Consider using `aws s3 ls '
-                    f'{self.source}` to debug.')
+                    _BUCKET_NOT_FOUND_ERROR.format(name = self.source, command = cmd))
 
         # If bucket cannot be found in both private and public settings,
         # the bucket is created by Sky.
@@ -1120,14 +1123,12 @@ class GcsStore(AbstractStore):
                 command = f'gsutil ls gs://{self.name}'
                 with ux_utils.print_exception_no_traceback():
                     raise exceptions.StorageBucketGetError(
-                        _BUCKET_FAIL_TO_CONNECT_MESSAGE.format(
+                        _BUCKET_NOT_FOUND_ERROR.format(
                             name=self.name, command=command)) from e
             except ValueError as e:
+                cmd = f'`gsutil ls gs://{self.name}`'
                 ex = exceptions.StorageBucketGetError(
-                    f'Attempted to access a private external bucket {self.name}'
-                    '\nCheck if the 1) the bucket name is taken and/or '
-                    '2) the bucket permissions are not setup correctly. '
-                    f'Consider using `gsutil ls gs://{self.name}` to debug.')
+                    _BUCKET_FORBIDDEN_ERROR.format(name = self.name, command = cmd))
                 with ux_utils.print_exception_no_traceback():
                     raise ex from e
 
