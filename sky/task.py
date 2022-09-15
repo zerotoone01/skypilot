@@ -34,6 +34,8 @@ _RUN_FN_CHECK_FAIL_MSG = (
     'run command generator must take exactly 2 arguments: node_rank (int) and'
     'a list of node ip addresses (List[str]). Got {run_sig}')
 
+_SIZE_REGION_TUPLE = Tuple[float, Optional[str]]
+
 
 def _is_valid_name(name: str) -> bool:
     """Checks if the task name is valid.
@@ -362,15 +364,15 @@ class Task:
                     f'num_nodes should be a positive int. Got: {num_nodes}')
         self._num_nodes = num_nodes
 
-    def set_inputs(self, inputs: Dict[str, float]):
+    def set_inputs(self, inputs: Dict[str, _SIZE_REGION_TUPLE]):
         self.inputs = inputs
         return self
 
-    def get_inputs(self) -> Optional[Dict[str, float]]:
+    def get_inputs(self) -> Optional[Dict[str, _SIZE_REGION_TUPLE]]:
         return self.inputs
 
     def get_estimated_inputs_size_gigabytes(self, input_name: str) -> float:
-        return self.inputs[input_name]
+        return self.inputs[input_name][0]
 
     def get_inputs_cloud(self, input_name: str) -> clouds.Cloud:
         """Returns the cloud my inputs live in."""
@@ -383,15 +385,15 @@ class Task:
             with ux_utils.print_exception_no_traceback():
                 raise ValueError(f'cloud path not supported: {input_name}')
 
-    def set_outputs(self, outputs: Dict[str, float]):
+    def set_outputs(self, outputs: Dict[str, _SIZE_REGION_TUPLE]):
         self.outputs = outputs
         return self
 
-    def get_outputs(self) -> Optional[Dict[str, float]]:
+    def get_outputs(self) -> Optional[Dict[str, _SIZE_REGION_TUPLE]]:
         return self.outputs
 
     def get_estimated_outputs_size_gigabytes(self, output_name: str) -> float:
-        return self.outputs[output_name]
+        return self.outputs[output_name][0]
 
     def set_resources(self, resources: Union['resources_lib.Resources',
                                              Set['resources_lib.Resources']]):

@@ -57,37 +57,6 @@ class Optimizer:
     """Optimizer: assigns best resources to user tasks."""
 
     @staticmethod
-    def _egress_cost(src_cloud: clouds.Cloud, dst_cloud: clouds.Cloud,
-                     gigabytes: float):
-        if isinstance(src_cloud, DummyCloud) or isinstance(
-                dst_cloud, DummyCloud):
-            return 0.0
-
-        if not src_cloud.is_same_cloud(dst_cloud):
-            egress_cost = src_cloud.get_egress_cost(num_gigabytes=gigabytes)
-        else:
-            egress_cost = 0.0
-        return egress_cost
-
-    @staticmethod
-    def _egress_time(src_cloud: clouds.Cloud, dst_cloud: clouds.Cloud,
-                     gigabytes: float):
-        """Returns estimated egress time in seconds."""
-        # FIXME: estimate bandwidth between each cloud-region pair.
-        if isinstance(src_cloud, DummyCloud) or isinstance(
-                dst_cloud, DummyCloud):
-            return 0.0
-        if not src_cloud.is_same_cloud(dst_cloud):
-            # 10Gbps is close to the average of observed b/w from S3
-            # (us-west,east-2) to GCS us-central1, assuming highly sharded files
-            # (~128MB per file).
-            bandwidth_gbps = 10
-            egress_time = gigabytes * 8 / bandwidth_gbps
-        else:
-            egress_time = 0.0
-        return egress_time
-
-    @staticmethod
     def optimize(dag: 'dag_lib.Dag',
                  minimize=OptimizeTarget.COST,
                  blocked_launchable_resources: Optional[List[
@@ -160,42 +129,86 @@ class Optimizer:
         dag.remove(sink[0])
 
     @staticmethod
-    def _get_egress_info(
-        parent: Task,
-        parent_resources: resources_lib.Resources,
-        node: Task,
-        resources: resources_lib.Resources,
-    ) -> Tuple[clouds.Cloud, clouds.Cloud, float]:
-        if isinstance(parent_resources.cloud, DummyCloud):
-            # Special case.  The current 'node' is a real
-            # source node, and its input may be on a different
-            # cloud from 'resources'.
-            if node.get_inputs() is None:
-                # A Task may have no inputs specified.
-                return None, None, 0
-            src_cloud = node.get_inputs_cloud()
-            nbytes = node.get_estimated_inputs_size_gigabytes()
+    def _egress_cost(src_cloud: clouds.Cloud,
+                     src_region: str,
+                     src_zone: Optional[str],
+                     dst_cloud: clouds.Cloud,
+                     dst_region: str,
+                     dst_zone: Optional[str],
+                     gigabytes: float) -> float:
+        if isinstance(src_cloud, DummyCloud) or isinstance(
+            dst_cloud, DummyCloud):
+            return 0.0
+        if src_cloud.is_same_cloud(dst_cloud) and src_region == dst_region:
+            if src_zone is None or src_zone == dst_zone:
+                return 0.0
+            else:
+                # Cross-zone egress.
+                # AWS: https://aws.amazon.com/blogs/apn/aws-data-transfer-charges-for-server-and-serverless-architectures/  # pylint: disable=line-too-long
+                # GCP: https://cloud.google.com/vpc/network-pricing
+                return 0.01 * gigabytes
         else:
-            src_cloud = parent_resources.cloud
-            nbytes = parent.get_estimated_outputs_size_gigabytes()
-        dst_cloud = resources.cloud
-        return src_cloud, dst_cloud, nbytes
+            # Cross-cloud or cross-region egress.
+            return src_cloud.get_egress_cost(num_gigabytes=gigabytes)
+
+    @staticmethod
+    def _egress_time(src_cloud: clouds.Cloud,
+                     src_region: str,
+                     src_zone: Optional[str],
+                     dst_cloud: clouds.Cloud,
+                     dst_region: str,
+                     dst_zone: Optional[str],
+                     gigabytes: float) -> float:
+        """Returns estimated egress time in seconds."""
+        if isinstance(src_cloud, DummyCloud) or isinstance(
+                dst_cloud, DummyCloud):
+            return 0.0
+        if src_cloud.is_same_cloud(dst_cloud) and src_region == dst_region:
+            if src_zone is None or src_zone == dst_zone:
+                return 0.0
+        # FIXME: estimate bandwidth between each cloud-region pair.
+        bandwidth_gbps = 10
+        egress_time = gigabytes * 8 / bandwidth_gbps
+        return egress_time
 
     @staticmethod
     def _egress_cost_or_time(minimize_cost: bool, parent: Task,
                              parent_resources: resources_lib.Resources,
-                             node: Task, resources: resources_lib.Resources):
+                             node: Task, resources: resources_lib.Resources) -> float:
         """Computes the egress cost or time depending on 'minimize_cost'."""
-        src_cloud, dst_cloud, nbytes = Optimizer._get_egress_info(
-            parent, parent_resources, node, resources)
-        if nbytes == 0:
-            return 0
+        dst_cloud = resources.cloud
+        dst_region = resources.region
+        dst_zone = resources.zone
+        inputs = node.get_inputs()
+
+        cost_or_times = []
+        fn = Optimizer._egress_cost if minimize_cost else Optimizer._egress_time
+        if isinstance(parent_resources.cloud, DummyCloud):
+            # Special case. The current 'node' is a real source node, and its
+            # input may be on a different cloud from 'resources'.
+            if inputs is None:
+                # The node has no inputs.
+                return 0.0
+
+            # The inputs come from cloud buckets.
+            for input_name, (size, src_region) in inputs.items():
+                assert src_region is not None
+                src_cloud = node.get_inputs_cloud(input_name)
+                cost_or_times.append(fn(src_cloud, src_region, None, dst_cloud, dst_region, dst_zone, size))
+        else:
+            # The inputs are one or more outputs of the parent node.
+            src_cloud = parent_resources.cloud
+            src_region = parent_resources.region
+            src_zone = parent_resources.zone
+            for input_name, (size, _) in inputs.items():
+                if input_name not in parent.get_outputs():
+                    continue
+                cost_or_times.append(fn(src_cloud, src_region, src_zone, dst_cloud, dst_region, dst_zone, size))
 
         if minimize_cost:
-            fn = Optimizer._egress_cost
+            return sum(cost_or_times)
         else:
-            fn = Optimizer._egress_time
-        return fn(src_cloud, dst_cloud, nbytes)
+            return max(cost_or_times)
 
     @staticmethod
     def _estimate_nodes_cost_or_time(
