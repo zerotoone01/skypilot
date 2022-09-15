@@ -127,8 +127,6 @@ class Task:
 
         self.inputs = None
         self.outputs = None
-        self.estimated_inputs_size_gigabytes = None
-        self.estimated_outputs_size_gigabytes = None
         # Default to CPUNode
         self.resources = {sky.Resources()}
         self.time_estimator_func = None
@@ -264,20 +262,12 @@ class Task:
 
         if config.get('inputs') is not None:
             inputs_dict = config.pop('inputs')
-            assert len(inputs_dict) == 1, 'Only one input is allowed.'
-            inputs = list(inputs_dict.keys())[0]
-            estimated_size_gigabytes = list(inputs_dict.values())[0]
             # TODO: allow option to say (or detect) no download/egress cost.
-            task.set_inputs(inputs=inputs,
-                            estimated_size_gigabytes=estimated_size_gigabytes)
+            task.set_inputs(inputs_dict)
 
         if config.get('outputs') is not None:
             outputs_dict = config.pop('outputs')
-            assert len(outputs_dict) == 1, 'Only one output is allowed.'
-            outputs = list(outputs_dict.keys())[0]
-            estimated_size_gigabytes = list(outputs_dict.values())[0]
-            task.set_outputs(outputs=outputs,
-                             estimated_size_gigabytes=estimated_size_gigabytes)
+            task.set_outputs(outputs_dict)
 
         resources = config.pop('resources', None)
         resources = sky.Resources.from_yaml_config(resources)
@@ -303,12 +293,9 @@ class Task:
         add_if_not_none('num_nodes', self.num_nodes)
 
         if self.inputs is not None:
-            add_if_not_none('inputs',
-                            {self.inputs: self.estimated_inputs_size_gigabytes})
+            add_if_not_none('inputs', self.inputs)
         if self.outputs is not None:
-            add_if_not_none(
-                'outputs',
-                {self.outputs: self.estimated_outputs_size_gigabytes})
+            add_if_not_none('outputs', self.outputs)
 
         add_if_not_none('setup', self.setup)
         add_if_not_none('workdir', self.workdir)
@@ -375,39 +362,36 @@ class Task:
                     f'num_nodes should be a positive int. Got: {num_nodes}')
         self._num_nodes = num_nodes
 
-    # E.g., 's3://bucket', 'gs://bucket', or None.
-    def set_inputs(self, inputs, estimated_size_gigabytes):
+    def set_inputs(self, inputs: Dict[str, float]):
         self.inputs = inputs
-        self.estimated_inputs_size_gigabytes = estimated_size_gigabytes
         return self
 
-    def get_inputs(self):
+    def get_inputs(self) -> Optional[Dict[str, float]]:
         return self.inputs
 
-    def get_estimated_inputs_size_gigabytes(self):
-        return self.estimated_inputs_size_gigabytes
+    def get_estimated_inputs_size_gigabytes(self, input_name: str) -> float:
+        return self.inputs[input_name]
 
-    def get_inputs_cloud(self):
+    def get_inputs_cloud(self, input_name: str) -> clouds.Cloud:
         """Returns the cloud my inputs live in."""
-        assert isinstance(self.inputs, str), self.inputs
-        if self.inputs.startswith('s3:'):
+        assert input_name in self.inputs and isinstance(input_name, str)
+        if input_name.startswith('s3:'):
             return clouds.AWS()
-        elif self.inputs.startswith('gs:'):
+        elif input_name.startswith('gs:'):
             return clouds.GCP()
         else:
             with ux_utils.print_exception_no_traceback():
-                raise ValueError(f'cloud path not supported: {self.inputs}')
+                raise ValueError(f'cloud path not supported: {input_name}')
 
-    def set_outputs(self, outputs, estimated_size_gigabytes):
+    def set_outputs(self, outputs: Dict[str, float]):
         self.outputs = outputs
-        self.estimated_outputs_size_gigabytes = estimated_size_gigabytes
         return self
 
-    def get_outputs(self):
+    def get_outputs(self) -> Optional[Dict[str, float]]:
         return self.outputs
 
-    def get_estimated_outputs_size_gigabytes(self):
-        return self.estimated_outputs_size_gigabytes
+    def get_estimated_outputs_size_gigabytes(self, output_name: str) -> float:
+        return self.outputs[output_name]
 
     def set_resources(self, resources: Union['resources_lib.Resources',
                                              Set['resources_lib.Resources']]):
