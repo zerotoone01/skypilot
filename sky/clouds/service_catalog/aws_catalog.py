@@ -29,9 +29,10 @@ def accelerator_in_region_or_zone(acc_name: str,
 
 def get_hourly_cost(instance_type: str,
                     region: Optional[str] = None,
+                    zone: Optional[str] = None,
                     use_spot: bool = False) -> float:
-    """Returns the cost, or the cheapest cost among all zones for spot."""
-    return common.get_hourly_cost_impl(_df, instance_type, region, use_spot)
+    return common.get_hourly_cost_impl(_df, instance_type, region, zone,
+                                       use_spot)
 
 
 def get_vcpus_from_instance_type(instance_type: str) -> Optional[float]:
@@ -46,6 +47,9 @@ def get_accelerators_from_instance_type(
 def get_instance_type_for_accelerator(
     acc_name: str,
     acc_count: int,
+    use_spot: bool = False,
+    region: Optional[str] = None,
+    zone: Optional[str] = None,
 ) -> Tuple[Optional[List[str]], List[str]]:
     """
     Returns a list of instance types satisfying the required count of
@@ -53,7 +57,10 @@ def get_instance_type_for_accelerator(
     """
     return common.get_instance_type_for_accelerator_impl(df=_df,
                                                          acc_name=acc_name,
-                                                         acc_count=acc_count)
+                                                         acc_count=acc_count,
+                                                         use_spot=use_spot,
+                                                         region=region,
+                                                         zone=zone)
 
 
 def get_region_zones_for_instance_type(instance_type: str,

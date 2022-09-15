@@ -1,5 +1,5 @@
 """Resources: compute requirements of Tasks."""
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from sky import clouds
 from sky import global_user_state
@@ -260,7 +260,32 @@ class Resources:
         self._region = region
         self._zone = zone
 
-    def _try_validate_instance_type(self):
+    def get_valid_region_zones(self) -> List[Tuple[clouds.Region, clouds.Zone]]:
+        """Returns a list of (region, zones) that can provision this Resources."""
+        assert self.is_launchable()
+
+        if isinstance(self._cloud, clouds.GCP):
+            gcp_region_zones = list(
+                self._cloud.region_zones_provision_loop(
+                    instance_type=self._instance_type,
+                    accelerators=self.accelerators, use_spot=self._use_spot))
+
+            # GCP provision loop yields 1 zone per request.
+            # For consistency with other clouds, we group the zones in the
+            # same region.
+            region_zones = []
+            regions = set()
+            for region, _ in gcp_region_zones:
+                if region.name not in regions:
+                    regions.add(region.name)
+                    region_zones.append((region, region.zones))
+        else:
+            region_zones = list(
+                self._cloud.region_zones_provision_loop(
+                    instance_type=self._instance_type, accelerators=self.accelerators, use_spot=self._use_spot))
+        return region_zones
+
+    def _try_validate_instance_type(self) -> None:
         if self.instance_type is None:
             return
 
@@ -299,6 +324,17 @@ class Resources:
                 f'inferred from the instance_type {self.instance_type!r}.')
             self._cloud = valid_clouds[0]
 
+        # FIXME
+        # Validate instance type against the region.
+        if self._region is not None:
+            region_zones = self.get_valid_region_zones()
+            regions = {region.name for region, _ in region_zones}
+            if self._region not in regions:
+                with ux_utils.print_exception_no_traceback():
+                    raise ValueError(
+                        f'Invalid region {self._region!r} '
+                        f'for instance type {self._instance_type!r}.')
+
     def _try_validate_accelerators(self) -> None:
         """Validate accelerators against the instance type and region/zone."""
         acc_requested = self.accelerators
@@ -313,6 +349,9 @@ class Resources:
 
         if self.is_launchable() and not isinstance(self.cloud, clouds.GCP):
             # GCP attaches accelerators to VMs, so no need for this check.
+            acc_requested = self.accelerators
+            if acc_requested is None:
+                return
             acc_from_instance_type = (
                 self.cloud.get_accelerators_from_instance_type(
                     self._instance_type))
@@ -332,18 +371,19 @@ class Resources:
             # specifies to use 1 GPU.
 
         # Validate whether accelerator is available in specified region/zone.
-        acc, acc_count = list(acc_requested.items())[0]
-        if self.region is not None or self.zone is not None:
-            if not self._cloud.accelerator_in_region_or_zone(
-                    acc, acc_count, self.region, self.zone):
-                error_str = (f'Accelerator "{acc}" is not available in '
-                             '"{}" region/zone.')
-                if self.zone:
-                    error_str = error_str.format(self.zone)
-                else:
-                    error_str = error_str.format(self.region)
-                with ux_utils.print_exception_no_traceback():
-                    raise ValueError(error_str)
+        if self.accelerators is not None:
+            acc, acc_count = list(self.accelerators.items())[0]
+            if self.region is not None or self.zone is not None:
+                if not self._cloud.accelerator_in_region_or_zone(
+                        acc, acc_count, self.region, self.zone):
+                    error_str = (f'Accelerator "{acc}" is not available in '
+                                 '"{}" region/zone.')
+                    if self.zone:
+                        error_str = error_str.format(self.zone)
+                    else:
+                        error_str = error_str.format(self.region)
+                    with ux_utils.print_exception_no_traceback():
+                        raise ValueError(error_str)
 
     def _try_validate_spot(self) -> None:
         if self._spot_recovery is None:
@@ -401,11 +441,11 @@ class Resources:
         hours = seconds / 3600
         # Instance.
         hourly_cost = self.cloud.instance_type_to_hourly_cost(
-            self._instance_type, self.use_spot)
+            self._instance_type, self.use_spot, self._region, self._zone)
         # Accelerators (if any).
         if self.accelerators is not None:
             hourly_cost += self.cloud.accelerators_to_hourly_cost(
-                self.accelerators, self.use_spot)
+                self.accelerators, self.use_spot, self._region, self._zone)
         return hourly_cost * hours
 
     def is_same_resources(self, other: 'Resources') -> bool:

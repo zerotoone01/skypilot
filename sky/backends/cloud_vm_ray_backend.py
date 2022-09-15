@@ -559,7 +559,6 @@ class RetryingVmProvisioner(object):
                                        'check logs above.')
 
     def _update_blocklist_on_aws_error(self, region, zones, stdout, stderr):
-        del zones  # Unused.
         style = colorama.Style
         stdout_splits = stdout.split('\n')
         stderr_splits = stderr.split('\n')
@@ -590,9 +589,13 @@ class RetryingVmProvisioner(object):
             with ux_utils.print_exception_no_traceback():
                 raise RuntimeError('Errors occurred during provision; '
                                    'check logs above.')
-        # The underlying ray autoscaler / boto3 will try all zones of a region
-        # at once.
-        logger.warning(f'Got error(s) in all zones of {region.name}:')
+        if zones == region.zones:
+            # The underlying ray autoscaler / boto3 will try all zones of a
+            # region at once.
+            logger.warning(f'Got error(s) in all zones of {region.name}:')
+        else:
+            zones_str = ', '.join(z.name for z in zones)
+            logger.warning(f'Got error(s) in {zones_str}:')
         messages = '\n\t'.join(errors)
         logger.warning(f'{style.DIM}\t{messages}{style.RESET_ALL}')
         self._blocked_regions.add(region.name)
@@ -1041,9 +1044,14 @@ class RetryingVmProvisioner(object):
             CloudVmRayBackend().teardown_no_lock(handle,
                                                  terminate=need_terminate)
 
-        message = ('Failed to acquire resources in all regions/zones of '
-                   f'{to_provision.cloud}. '
-                   'Try changing resource requirements or use another cloud.')
+        if to_provision.zone is None:
+            message = ('Failed to acquire resources in all zones in '
+                       f'{to_provision.region}. Try changing resource '
+                       'requirements or use another region.')
+        else:
+            message = (
+                f'Failed to acquire resources in {to_provision.zone}. '
+                'Try changing resource requirements or use another zone.')
         raise exceptions.ResourcesUnavailableError(message)
 
     def _tpu_pod_setup(self, cluster_yaml: str,
@@ -1660,10 +1668,13 @@ class CloudVmRayBackend(backends.Backend):
             backoff = common_utils.Backoff(_RETRY_UNTIL_UP_INIT_GAP_SECONDS)
             attempt_cnt = 1
             while True:
-                # RetryingVmProvisioner will retry within a cloud's regions
-                # first (if a region is not explicitly requested), then
-                # optionally retry on all other clouds (if
-                # backend.register_info() has been called).
+                # For on-demand instances, RetryingVmProvisioner will retry
+                # within the given region first, then optionally retry on all
+                # other clouds and regions (if backend.register_info()
+                # has been called).
+                # For spot instances, each provisioning request is made for a
+                # single zone and the provisioner will retry on all other
+                # clouds, regions, and zones.
                 # After this "round" of optimization across clouds, provisioning
                 # may still have not succeeded. This while loop will then kick
                 # in if retry_until_up is set, which will kick off new "rounds"

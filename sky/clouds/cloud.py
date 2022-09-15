@@ -102,12 +102,15 @@ class Cloud:
 
     #### Normal methods ####
 
-    # TODO: incorporate region/zone into the API.
-    def instance_type_to_hourly_cost(self, instance_type, use_spot):
+    def instance_type_to_hourly_cost(self, instance_type: str, use_spot: bool,
+                                     region: Optional[str],
+                                     zone: Optional[str]) -> float:
         """Returns the hourly on-demand/spot price for an instance type."""
         raise NotImplementedError
 
-    def accelerators_to_hourly_cost(self, accelerators, use_spot):
+    def accelerators_to_hourly_cost(self, accelerators: Dict[str, int],
+                                    use_spot: bool, region: Optional[str],
+                                    zone: Optional[str]) -> float:
         """Returns the hourly on-demand price for accelerators."""
         raise NotImplementedError
 
