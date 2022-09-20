@@ -1,6 +1,7 @@
 """Optimizer: assigns best resources to user tasks."""
 import collections
 import enum
+import os
 import typing
 from typing import Dict, List, Optional, Tuple
 
@@ -176,32 +177,38 @@ class Optimizer:
                              parent_resources: resources_lib.Resources,
                              node: Task, resources: resources_lib.Resources) -> float:
         """Computes the egress cost or time depending on 'minimize_cost'."""
+        inputs = node.get_inputs()
+        if inputs is None:
+            return 0.0
+
         dst_cloud = resources.cloud
         dst_region = resources.region
         dst_zone = resources.zone
-        inputs = node.get_inputs()
 
         cost_or_times = []
         fn = Optimizer._egress_cost if minimize_cost else Optimizer._egress_time
         if isinstance(parent_resources.cloud, DummyCloud):
             # Special case. The current 'node' is a real source node, and its
-            # input may be on a different cloud from 'resources'.
-            if inputs is None:
-                # The node has no inputs.
-                return 0.0
-
-            # The inputs come from cloud buckets.
+            # inputs come from cloud buckets.
             for input_name, (size, src_region) in inputs.items():
                 assert src_region is not None
+                if size == 0:
+                    continue
                 src_cloud = node.get_inputs_cloud(input_name)
                 cost_or_times.append(fn(src_cloud, src_region, None, dst_cloud, dst_region, dst_zone, size))
         else:
             # The inputs are one or more outputs of the parent node.
+            parent_outputs = parent.get_outputs()
+            if parent_outputs is None:
+                return 0.0
+
             src_cloud = parent_resources.cloud
             src_region = parent_resources.region
             src_zone = parent_resources.zone
             for input_name, (size, _) in inputs.items():
-                if input_name not in parent.get_outputs():
+                if input_name not in parent_outputs:
+                    continue
+                if size == 0:
                     continue
                 cost_or_times.append(fn(src_cloud, src_region, src_zone, dst_cloud, dst_region, dst_zone, size))
 
@@ -495,6 +502,15 @@ class Optimizer:
             objective = finish_time[sink_node]
         prob += objective
 
+        # Warm-start the solver.
+        # for v in V:
+        #     min_index = np.argmin(k[v])
+        #     for i in range(len(c[v])):
+        #         if i == min_index:
+        #             c[v][i].setInitialValue(1)
+        #         else:
+        #             c[v][i].setInitialValue(0)
+
         # Solve the optimization problem.
         prob.solve(solver=pulp.PULP_CBC_CMD(msg=False))
         assert prob.status != pulp.LpStatusInfeasible, \
@@ -691,7 +707,7 @@ class Optimizer:
             logger.info(f'{best_plan_table}\n')
 
         # Print the egress plan if any data egress is scheduled.
-        Optimizer._print_egress_plan(graph, best_plan, minimize_cost)
+        # Optimizer._print_egress_plan(graph, best_plan, minimize_cost)
 
         metric = 'COST ($)' if minimize_cost else 'TIME (hr)'
         field_names = resource_fields + [metric, 'CHOSEN']
@@ -779,12 +795,19 @@ class Optimizer:
                 minimize_cost,
                 blocked_launchable_resources)
 
-        if dag.is_chain():
-            best_plan, best_total_objective = Optimizer._optimize_by_dp(
-                topo_order, node_to_cost_map, minimize_cost)
-        else:
-            best_plan, best_total_objective = Optimizer._optimize_by_ilp(
-                graph, topo_order, node_to_cost_map, minimize_cost)
+        avg = 0
+        for node, cost_map in node_to_cost_map.items():
+            if 'dummy' in node.name:
+                continue
+            avg += len(cost_map)
+        print('Average number of candidates:', avg / (len(node_to_cost_map) - 2))
+        # if dag.is_chain():
+        #     print('CHAIN!!!')
+        #     best_plan, best_total_objective = Optimizer._optimize_by_dp(
+        #         topo_order, node_to_cost_map, minimize_cost)
+        # else:
+        best_plan, best_total_objective = Optimizer._optimize_by_ilp(
+            graph, topo_order, node_to_cost_map, minimize_cost)
 
         if minimize_cost:
             total_time = Optimizer._compute_total_time(graph, topo_order,
@@ -831,14 +854,16 @@ def _generate_launchables_with_region_zones(
     for region, zones in resources.get_valid_region_zones():
         if (resources.region is not None and region.name != resources.region):
             continue
-        if not resources.use_spot:
+        if not zones:
             launchables.append(resources.copy(region=region.name))
-        else:
-            for zone in zones:
-                if (resources.zone is not None and zone.name != resources.zone):
-                    continue
-                launchables.append(
-                    resources.copy(region=region.name, zone=zone.name))
+        for zone in zones:
+            # Only consider the US zones.
+            if 'us' not in zone.name or 'australia' in zone.name:
+                continue
+            if (resources.zone is not None and zone.name != resources.zone):
+                continue
+            launchables.append(
+                resources.copy(region=region.name, zone=zone.name))
     return launchables
 
 

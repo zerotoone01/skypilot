@@ -381,6 +381,8 @@ class Task:
             return clouds.AWS()
         elif input_name.startswith('gs:'):
             return clouds.GCP()
+        elif input_name.startswith('azure:'):
+            return clouds.Azure()
         else:
             with ux_utils.print_exception_no_traceback():
                 raise ValueError(f'cloud path not supported: {input_name}')
