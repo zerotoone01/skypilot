@@ -1,0 +1,223 @@
+import copy
+import random
+import time
+
+import sky
+
+
+def BashOperator(task_id, bash_command):
+    time_estimate = {
+        'AWS': random.random() * 3600,
+        'GCP': random.random() * 3600,
+        'Azure': random.random() * 3600,
+    }
+    task = sky.Task(task_id)
+    task.set_resources({sky.Resources(cloud=sky.AWS()), sky.Resources(cloud=sky.GCP()), sky.Resources(cloud=sky.Azure())})
+    task.set_time_estimator(lambda r: time_estimate[str(r.cloud)])
+    return task
+
+
+def make_application():
+    with sky.Dag() as dag:
+        # Create
+        create_entry_group = BashOperator(task_id="create_entry_group", bash_command="echo create_entry_group")
+
+        create_entry_group_result = BashOperator(
+            task_id="create_entry_group_result", bash_command="echo create_entry_group_result"
+        )
+
+        create_entry_group_result2 = BashOperator(
+            task_id="create_entry_group_result2", bash_command="echo create_entry_group_result2"
+        )
+
+        create_entry_gcs = BashOperator(task_id="create_entry_gcs", bash_command="echo create_entry_gcs")
+
+        create_entry_gcs_result = BashOperator(
+            task_id="create_entry_gcs_result", bash_command="echo create_entry_gcs_result"
+        )
+
+        create_entry_gcs_result2 = BashOperator(
+            task_id="create_entry_gcs_result2", bash_command="echo create_entry_gcs_result2"
+        )
+
+        create_tag = BashOperator(task_id="create_tag", bash_command="echo create_tag")
+
+        create_tag_result = BashOperator(task_id="create_tag_result", bash_command="echo create_tag_result")
+
+        create_tag_result2 = BashOperator(task_id="create_tag_result2", bash_command="echo create_tag_result2")
+
+        create_tag_template = BashOperator(task_id="create_tag_template", bash_command="echo create_tag_template")
+
+        create_tag_template_result = BashOperator(
+            task_id="create_tag_template_result", bash_command="echo create_tag_template_result"
+        )
+
+        create_tag_template_result2 = BashOperator(
+            task_id="create_tag_template_result2", bash_command="echo create_tag_template_result2"
+        )
+
+        create_tag_template_field = BashOperator(
+            task_id="create_tag_template_field", bash_command="echo create_tag_template_field"
+        )
+
+        create_tag_template_field_result = BashOperator(
+            task_id="create_tag_template_field_result", bash_command="echo create_tag_template_field_result"
+        )
+
+        create_tag_template_field_result2 = BashOperator(
+            task_id="create_tag_template_field_result2", bash_command="echo create_tag_template_field_result"
+        )
+
+        # Delete
+        delete_entry = BashOperator(task_id="delete_entry", bash_command="echo delete_entry")
+        create_entry_gcs >> delete_entry
+
+        delete_entry_group = BashOperator(task_id="delete_entry_group", bash_command="echo delete_entry_group")
+        create_entry_group >> delete_entry_group
+
+        delete_tag = BashOperator(task_id="delete_tag", bash_command="echo delete_tag")
+        create_tag >> delete_tag
+
+        delete_tag_template_field = BashOperator(
+            task_id="delete_tag_template_field", bash_command="echo delete_tag_template_field"
+        )
+
+        delete_tag_template = BashOperator(task_id="delete_tag_template", bash_command="echo delete_tag_template")
+
+        # Get
+        get_entry_group = BashOperator(task_id="get_entry_group", bash_command="echo get_entry_group")
+
+        get_entry_group_result = BashOperator(
+            task_id="get_entry_group_result", bash_command="echo get_entry_group_result"
+        )
+
+        get_entry = BashOperator(task_id="get_entry", bash_command="echo get_entry")
+
+        get_entry_result = BashOperator(task_id="get_entry_result", bash_command="echo get_entry_result")
+
+        get_tag_template = BashOperator(task_id="get_tag_template", bash_command="echo get_tag_template")
+
+        get_tag_template_result = BashOperator(
+            task_id="get_tag_template_result", bash_command="echo get_tag_template_result"
+        )
+
+        # List
+        list_tags = BashOperator(task_id="list_tags", bash_command="echo list_tags")
+
+        list_tags_result = BashOperator(task_id="list_tags_result", bash_command="echo list_tags_result")
+
+        # Lookup
+        lookup_entry = BashOperator(task_id="lookup_entry", bash_command="echo lookup_entry")
+
+        lookup_entry_result = BashOperator(task_id="lookup_entry_result", bash_command="echo lookup_entry_result")
+
+        # Rename
+        rename_tag_template_field = BashOperator(
+            task_id="rename_tag_template_field", bash_command="echo rename_tag_template_field"
+        )
+
+        # Search
+        search_catalog = BashOperator(task_id="search_catalog", bash_command="echo search_catalog")
+
+        search_catalog_result = BashOperator(
+            task_id="search_catalog_result", bash_command="echo search_catalog_result"
+        )
+
+        # Update
+        update_entry = BashOperator(task_id="update_entry", bash_command="echo update_entry")
+
+        update_tag = BashOperator(task_id="update_tag", bash_command="echo update_tag")
+
+        update_tag_template = BashOperator(task_id="update_tag_template", bash_command="echo update_tag_template")
+
+        update_tag_template_field = BashOperator(
+            task_id="update_tag_template_field", bash_command="echo update_tag_template_field"
+        )
+
+        # Create
+        create_entry_group >> create_entry_gcs
+        create_entry_gcs >> create_tag_template
+        create_tag_template >> create_tag_template_field
+        create_tag_template_field >> create_tag 
+
+        create_entry_group >> delete_entry_group
+        create_entry_group >> create_entry_group_result
+        create_entry_group >> create_entry_group_result2
+
+        create_entry_gcs >> delete_entry
+        create_entry_gcs >> create_entry_gcs_result
+        create_entry_gcs >> create_entry_gcs_result2
+
+        create_tag_template >> delete_tag_template_field
+        create_tag_template >> create_tag_template_result
+        create_tag_template >> create_tag_template_result2
+
+        create_tag_template_field >> delete_tag_template_field
+        create_tag_template_field >> create_tag_template_field_result
+        create_tag_template_field >> create_tag_template_field_result2
+
+        create_tag >> delete_tag
+        create_tag >> create_tag_result
+        create_tag >> create_tag_result2
+
+        # Delete
+        delete_tag >> delete_tag_template_field
+        delete_tag_template_field >> delete_tag_template
+        delete_tag_template >> delete_entry_group
+        delete_entry_group >> delete_entry
+
+        # Get
+        create_tag_template >> get_tag_template
+        get_tag_template >> delete_tag_template
+        get_tag_template >> get_tag_template_result
+
+        create_entry_gcs >> get_entry
+        get_entry >> delete_entry
+        get_entry >> get_entry_result
+
+        create_entry_group >> get_entry_group
+        get_entry_group >> delete_entry_group
+        get_entry_group >> get_entry_group_result
+
+        # List
+        create_tag >> list_tags
+        list_tags >> delete_tag
+        list_tags >> list_tags_result
+
+        # Lookup
+        create_entry_gcs >> lookup_entry
+        lookup_entry >> delete_entry
+        lookup_entry >> lookup_entry_result
+
+        # Rename
+        create_tag_template_field >> rename_tag_template_field
+        rename_tag_template_field >> delete_tag_template_field
+
+        # Search
+        create_tag >> search_catalog
+        search_catalog >> delete_tag
+        search_catalog >> search_catalog_result
+
+        # Update
+        create_entry_gcs >> update_entry
+        update_entry >> delete_entry
+        create_tag >> update_tag
+        update_tag >> delete_tag
+        create_tag_template >> update_tag_template
+        update_tag_template >> delete_tag_template
+        create_tag_template_field >> update_tag_template_field
+        update_tag_template_field >> rename_tag_template_field
+
+    return dag
+
+
+if __name__ == '__main__':
+    random.seed(0)
+    dag = make_application()
+    copy_dag = copy.deepcopy(dag)
+
+    sky.optimize(dag)
+
+    start_time = time.time()
+    sky.optimize(copy_dag, quiet=True)
+    print(f'Optimized in {time.time() - start_time} seconds')
