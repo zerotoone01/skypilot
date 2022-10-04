@@ -8,6 +8,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from sky import sky_logging
+from sky.utils import db_utils
 
 logger = sky_logging.init_logger(__name__)
 
@@ -38,11 +39,23 @@ _CURSOR.execute("""\
 # If the job is not finished:
 # total_job_duration = end_at - last_recovered_at + job_duration
 
+db_utils.add_column_to_table(_CURSOR, _CONN, 'spot', 'num_tried_locations',
+                             'INTEGER DEFAULT -1')
+
 _CONN.commit()
 columns = [
-    'job_id', 'job_name', 'resources', 'submitted_at', 'status',
-    'run_timestamp', 'start_at', 'end_at', 'last_recovered_at',
-    'recovery_count', 'job_duration'
+    'job_id',
+    'job_name',
+    'resources',
+    'submitted_at',
+    'status',
+    'run_timestamp',
+    'start_at',
+    'end_at',
+    'last_recovered_at',
+    'recovery_count',
+    'job_duration',
+    'num_tried_locations',
 ]
 
 
@@ -199,6 +212,16 @@ def set_cancelled(job_id: int):
         (SpotStatus.CANCELLED.value, time.time(), job_id))
     _CONN.commit()
     logger.info('Job cancelled.')
+
+
+def update_num_tried_locations(job_id: int, num_tried_locations: Optional[int]):
+    _CURSOR.execute(
+        """\
+        UPDATE spot SET
+        num_tried_locations = COALESCE(?, num_tried_locations)
+        WHERE job_id=(?)""", (num_tried_locations, job_id))
+    _CONN.commit()
+    logger.info(f'Job {job_id} has {num_tried_locations} locations tried.')
 
 
 # ======== utility functions ========

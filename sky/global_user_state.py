@@ -61,6 +61,8 @@ def create_table(cursor, conn):
     db_utils.add_column_to_table(cursor, conn, 'clusters', 'metadata',
                                  'TEXT DEFAULT "{}"')
 
+    db_utils.add_column_to_table(cursor, conn, 'clusters',
+                                 'num_tried_locations', 'INTEGER DEFAULT -1')
     conn.commit()
 
 
@@ -105,7 +107,8 @@ class StorageStatus(enum.Enum):
 def add_or_update_cluster(cluster_name: str,
                           cluster_handle: 'backends.Backend.ResourceHandle',
                           ready: bool,
-                          is_launch: bool = True):
+                          is_launch: bool = True,
+                          num_tried_locations: Optional[int] = None):
     """Adds or updates cluster_name -> cluster_handle mapping."""
     # FIXME: launched_at will be changed when `sky launch -c` is called.
     handle = pickle.dumps(cluster_handle)
@@ -114,7 +117,7 @@ def add_or_update_cluster(cluster_name: str,
     status = ClusterStatus.UP if ready else ClusterStatus.INIT
     _DB.cursor.execute(
         'INSERT or REPLACE INTO clusters'
-        '(name, launched_at, handle, last_use, status, autostop) '
+        '(name, launched_at, handle, last_use, status, autostop, num_tried_locations) '
         'VALUES ('
         # name
         '?, '
@@ -132,7 +135,10 @@ def add_or_update_cluster(cluster_name: str,
         # Keep the old autostop value if it exists, otherwise set it to
         # default -1.
         'COALESCE('
-        '(SELECT autostop FROM clusters WHERE name=? AND status!=?), -1)'
+        '(SELECT autostop FROM clusters WHERE name=? AND status!=?), -1), '
+        # num_tried_locations
+        'COALESCE('
+        '?, (SELECT num_tried_locations FROM clusters WHERE name=?))'
         ')',
         (
             # name
@@ -150,6 +156,9 @@ def add_or_update_cluster(cluster_name: str,
             # autostop
             cluster_name,
             ClusterStatus.STOPPED.value,
+            # num_tried_locations
+            num_tried_locations,
+            cluster_name,
         ))
     _DB.conn.commit()
 
@@ -248,7 +257,8 @@ def get_cluster_from_name(
         cluster_name: Optional[str]) -> Optional[Dict[str, Any]]:
     rows = _DB.cursor.execute('SELECT * FROM clusters WHERE name=(?)',
                               (cluster_name,))
-    for name, launched_at, handle, last_use, status, autostop, metadata in rows:
+    for (name, launched_at, handle, last_use, status, autostop, metadata,
+         num_tried_locations) in rows:
         record = {
             'name': name,
             'launched_at': launched_at,
@@ -257,6 +267,7 @@ def get_cluster_from_name(
             'status': ClusterStatus[status],
             'autostop': autostop,
             'metadata': json.loads(metadata),
+            'num_tried_locations': num_tried_locations,
         }
         return record
 
@@ -265,7 +276,8 @@ def get_clusters() -> List[Dict[str, Any]]:
     rows = _DB.cursor.execute(
         'select * from clusters order by launched_at desc')
     records = []
-    for name, launched_at, handle, last_use, status, autostop, metadata in rows:
+    for (name, launched_at, handle, last_use, status, autostop, metadata,
+         num_tried_locations) in rows:
         # TODO: use namedtuple instead of dict
         record = {
             'name': name,
@@ -275,6 +287,7 @@ def get_clusters() -> List[Dict[str, Any]]:
             'status': ClusterStatus[status],
             'autostop': autostop,
             'metadata': json.loads(metadata),
+            'num_tried_locations': num_tried_locations,
         }
         records.append(record)
     return records

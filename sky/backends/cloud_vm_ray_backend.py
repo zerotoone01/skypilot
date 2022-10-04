@@ -13,7 +13,7 @@ import tempfile
 import textwrap
 import time
 import typing
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import colorama
 import filelock
@@ -437,11 +437,29 @@ class RetryingVmProvisioner(object):
         GANG_FAILED = 1
         HEAD_FAILED = 2
 
-    def __init__(self, log_dir: str, dag: 'dag.Dag',
-                 optimize_target: OptimizeTarget,
-                 local_wheel_path: pathlib.Path, wheel_hash: str):
+    def __init__(
+        self,
+        log_dir: str,
+        dag: 'dag.Dag',
+        optimize_target: OptimizeTarget,
+        local_wheel_path: pathlib.Path,
+        wheel_hash: str,
+        blocked_regions: Optional[Set[str]] = None,
+        blocked_zones: Optional[Set[str]] = None,
+    ):
         self._blocked_regions = set()
+        if blocked_regions is not None:
+            logger.info(f'Blocked regions: {blocked_regions}')
+            self._blocked_regions = blocked_regions
+            logger.info(f'self._blocked_regions: {self._blocked_regions}')
+
         self._blocked_zones = set()
+        if blocked_zones is not None:
+            logger.info(f'Blocked zones: {blocked_zones}')
+            self._blocked_zones = blocked_zones
+            logger.info(f'self._blocked_zones: {self._blocked_zones}')
+
+
         self._blocked_launchable_resources = set()
 
         self.log_dir = os.path.expanduser(log_dir)
@@ -452,7 +470,11 @@ class RetryingVmProvisioner(object):
 
         colorama.init()
 
-    def _in_blocklist(self, cloud, region, zones):
+    def _in_blocklist(self, cloud, region, zones) -> bool:
+        logger.info(f'_in_blocklist, {region}, {zones}')
+        logger.info(
+            f'_in_blocklist, blocked: {self._blocked_regions}, {self._blocked_zones}'
+        )
         if region.name in self._blocked_regions:
             return True
         # We do not keep track of zones in Azure and Local,
@@ -901,17 +923,23 @@ class RetryingVmProvisioner(object):
         tail_cmd = f'tail -n100 -f {log_path}'
         logger.info('To view detailed progress: '
                     f'{style.BRIGHT}{tail_cmd}{style.RESET_ALL}')
+        logger.info(f'self._blocked_regions: {self._blocked_regions}')
+        logger.info(f'self._blocked_zones: {self._blocked_zones}')
 
         # Get previous cluster status
         prev_cluster_status = backend_utils.refresh_cluster_status_handle(
             cluster_name, acquire_per_cluster_status_lock=False)[0]
 
-        self._clear_blocklist()
+        # self._clear_blocklist()  # FIXME: reconcile this w/ ctor's blocked_zones
+
+        # Location = a region or a zone, an iteration of the loop below.
+        self._num_tried_locations = 0
         for region, zones in self._yield_region_zones(to_provision,
                                                       cluster_name,
                                                       cluster_exists):
             if self._in_blocklist(to_provision.cloud, region, zones):
                 continue
+            self._num_tried_locations += 1
             zone_str = ','.join(
                 z.name for z in zones) if zones is not None else 'all zones'
             config_dict = backend_utils.write_cluster_config(
@@ -943,9 +971,11 @@ class RetryingVmProvisioner(object):
                 global_user_state.ClusterStatus.INIT)
 
             # This sets the status to INIT (even for a normal, UP cluster).
-            global_user_state.add_or_update_cluster(cluster_name,
-                                                    cluster_handle=handle,
-                                                    ready=False)
+            global_user_state.add_or_update_cluster(
+                cluster_name,
+                cluster_handle=handle,
+                ready=False,
+                num_tried_locations=self._num_tried_locations)
 
             tpu_name = config_dict.get('tpu_name')
             if tpu_name is not None:
@@ -1161,9 +1191,11 @@ class RetryingVmProvisioner(object):
 
         # Retry if the any of the following happens:
         # 1. Failed due to timeout when fetching head node for Azure.
-        # 2. Failed due to file mounts, because it is probably has too
-        # many ssh connections and can be fixed by retrying.
-        # This is required when using custom image for GCP.
+        # 2. Failed due to file mounts, because it probably has too
+        #    many ssh connections and can be fixed by retrying.
+        #    This is required when using custom image for GCP.
+        # 3. (GCP) failed due to Quota exceeded for quota metric 'List
+        #    requests' and limit 'List requests per minute'.
         def need_ray_up(
                 ray_up_return_value: Optional[Tuple[int, str, str]]) -> bool:
 
@@ -1187,11 +1219,19 @@ class RetryingVmProvisioner(object):
                         'Retrying head node provisioning due to head fetching '
                         'timeout.')
                     return True
+
+            if isinstance(to_provision_cloud, clouds.GCP):
+                if ('Quota exceeded for quota metric \'List requests\' and '
+                        'limit \'List requests per minute\'' in stderr):
+                    logger.info(
+                        'Retrying due to list request rate limit exceeded.')
+                    return True
+
             if ('Processing file mounts' in stdout and
                     'Running setup commands' not in stdout and
                     'Failed to setup head node.' in stderr):
                 logger.info(
-                    'Retrying sky runtime setup due to ssh connection issue.')
+                    'Retrying runtime setup due to ssh connection issue.')
                 return True
 
             if ('ConnectionResetError: [Errno 54] Connection reset by peer'
@@ -1202,9 +1242,18 @@ class RetryingVmProvisioner(object):
 
         retry_cnt = 0
         ray_up_return_value = None
+        # 5 seconds to 180 seconds. We need backoff for e.g., rate limit per
+        # minute errors.
+        backoff = common_utils.Backoff(initial_backoff=5,
+                                       max_backoff_factor=180 // 5)
         while (retry_cnt < _MAX_RAY_UP_RETRY and
                need_ray_up(ray_up_return_value)):
             retry_cnt += 1
+            if retry_cnt > 1:
+                sleep = backoff.current_backoff()
+                logger.info(
+                    'Retrying launching in {:.1f} seconds.'.format(sleep))
+                time.sleep(sleep)
             ray_up_return_value = ray_up()
 
         assert ray_up_return_value is not None
@@ -1331,7 +1380,7 @@ class RetryingVmProvisioner(object):
         to_provision_config: ToProvisionConfig,
         dryrun: bool,
         stream_logs: bool,
-    ):
+    ) -> Optional[Dict[str, Any]]:
         """Provision with retries for all launchable resources."""
         cluster_name = to_provision_config.cluster_name
         to_provision = to_provision_config.resources
@@ -1408,6 +1457,7 @@ class RetryingVmProvisioner(object):
                 to_provision = task.best_resources
                 assert task in self._dag.tasks, 'Internal logic error.'
                 assert to_provision is not None, task
+        config_dict['num_tried_locations'] = self._num_tried_locations
         return config_dict
 
 
@@ -1620,13 +1670,17 @@ class CloudVmRayBackend(backends.Backend):
                     f'{handle.launched_resources}\n'
                     f'{mismatch_str}')
 
-    def _provision(self,
-                   task: task_lib.Task,
-                   to_provision: Optional[resources_lib.Resources],
-                   dryrun: bool,
-                   stream_logs: bool,
-                   cluster_name: str,
-                   retry_until_up: bool = False) -> ResourceHandle:
+    def _provision(
+        self,
+        task: task_lib.Task,
+        to_provision: Optional[resources_lib.Resources],
+        dryrun: bool,
+        stream_logs: bool,
+        cluster_name: str,
+        retry_until_up: bool = False,
+        blocked_regions: Optional[Set[str]] = None,
+        blocked_zones: Optional[Set[str]] = None,
+    ) -> ResourceHandle:
         """Provisions using 'ray up'."""
         # FIXME: ray up for Azure with different cluster_names will overwrite
         # each other.
@@ -1663,16 +1717,28 @@ class CloudVmRayBackend(backends.Backend):
                 # RetryingVmProvisioner will retry within a cloud's regions
                 # first (if a region is not explicitly requested), then
                 # optionally retry on all other clouds (if
-                # backend.register_info() has been called).
-                # After this "round" of optimization across clouds, provisioning
-                # may still have not succeeded. This while loop will then kick
-                # in if retry_until_up is set, which will kick off new "rounds"
-                # of optimization infinitely.
+                # backend.register_info() has been called).  After this "round"
+                # of optimization across clouds, provisioning may still have
+                # not succeeded. This while loop will then kick in if
+                # retry_until_up is set, which will kick off new "rounds" of
+                # optimization infinitely.
                 try:
-                    provisioner = RetryingVmProvisioner(self.log_dir, self._dag,
-                                                        self._optimize_target,
-                                                        local_wheel_path,
-                                                        wheel_hash)
+                    # logger.info(
+                    #     'Creating RetryingVmProvisioner. '
+                    #     f'blocked_regions {blocked_regions} '
+                    #     f'blocked_zones {blocked_zones}'
+                    # )
+                    provisioner = RetryingVmProvisioner(
+                        self.log_dir,
+                        self._dag,
+                        self._optimize_target,
+                        local_wheel_path,
+                        wheel_hash,
+                        blocked_regions=blocked_regions,
+                        blocked_zones=blocked_zones,
+                    )
+                    # logger.info(
+                    #     f'RetryingVmProvisioner: {provisioner._blocked_zones}')
                     config_dict = provisioner.provision_with_retries(
                         task, to_provision_config, dryrun, stream_logs)
                     break
@@ -1808,9 +1874,11 @@ class CloudVmRayBackend(backends.Backend):
                     stdout + stderr)
 
             with timeline.Event('backend.provision.post_process'):
-                global_user_state.add_or_update_cluster(cluster_name,
-                                                        handle,
-                                                        ready=True)
+                global_user_state.add_or_update_cluster(
+                    cluster_name,
+                    handle,
+                    ready=True,
+                    num_tried_locations=config_dict['num_tried_locations'])
                 usage_lib.messages.usage.update_final_cluster_status(
                     global_user_state.ClusterStatus.UP)
                 auth_config = common_utils.read_yaml(
@@ -2184,11 +2252,12 @@ class CloudVmRayBackend(backends.Backend):
     def _teardown(self,
                   handle: ResourceHandle,
                   terminate: bool,
-                  purge: bool = False):
+                  purge: bool = False) -> bool:
         cluster_name = handle.cluster_name
         lock_path = os.path.expanduser(
             backend_utils.CLUSTER_STATUS_LOCK_PATH.format(cluster_name))
 
+        success = False
         try:
             # TODO(mraheja): remove pylint disabling when filelock
             # version updated
@@ -2203,6 +2272,8 @@ class CloudVmRayBackend(backends.Backend):
             raise RuntimeError(
                 f'Cluster {cluster_name!r} is locked by {lock_path}. '
                 'Check to see if it is still being launched.') from e
+        finally:
+            return success
 
     # --- CloudVMRayBackend Specific APIs ---
 
@@ -2470,6 +2541,8 @@ class CloudVmRayBackend(backends.Backend):
                 with backend_utils.safe_console_status(
                         f'[bold cyan]{teardown_verb} '
                         f'[green]{cluster_name}'):
+                    # FIXME: support retries. This call can fail for example
+                    # due to GCP returning list requests per limit exceeded.
                     returncode, stdout, stderr = log_lib.run_with_log(
                         ['ray', 'down', '-y', f.name],
                         log_abs_path,

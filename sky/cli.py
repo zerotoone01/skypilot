@@ -333,6 +333,7 @@ _EXTRA_RESOURCES_OPTIONS = [
          'Passing "none" resets the config.')),
     click.option(
         '--instance-type',
+        '-t',
         required=False,
         type=str,
         help=('The instance type to use. If specified, overrides the '
@@ -793,7 +794,7 @@ def cli():
 
 
 @cli.command(cls=_DocumentedCodeCommand)
-@click.argument('entrypoint', required=True, type=str, nargs=-1)
+@click.argument('entrypoint', required=False, type=str, nargs=-1)
 @click.option('--cluster',
               '-c',
               default=None,
@@ -1631,7 +1632,7 @@ def _terminate_or_stop_clusters(
                        f'{reserved_clusters_str} is not supported.')
                 if terminate:
                     msg += (
-                        '\nPlease specify --purge to force termination of the '
+                        '\nPlease specify --purge (-p) to force-terminate the '
                         'reserved cluster(s).')
                 raise click.UsageError(msg)
             if len(names) != 0:

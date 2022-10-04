@@ -6,6 +6,7 @@ import typing
 from typing import Dict, Iterator, List, Optional, Tuple
 
 from google import auth
+import numpy as np
 
 from sky import clouds
 from sky.clouds import service_catalog
@@ -28,6 +29,10 @@ _CREDENTIAL_FILES = [
 ]
 
 _IMAGE_ID_PREFIX = ('projects/deeplearning-platform-release/global/images/')
+
+# HACK for Salk experiment.
+# print('Seeding with 1.')  # NOTE: don't print this; breaks spot status.
+np.random.seed(1)
 
 
 def _run_output(cmd):
@@ -112,9 +117,17 @@ class GCP(clouds.Cloud):
             regions = service_catalog.get_region_zones_for_accelerators(
                 acc, acc_count, use_spot, clouds='gcp')
 
+        # HACK:
+        gcp_randomize_zones = os.environ.get('_GCP_RANDOMIZE_ZONES')
         for region in regions:
-            for zone in region.zones:
-                yield (region, [zone])
+            if gcp_randomize_zones is not None:
+                randomized = np.random.permutation(np.arange(len(region.zones)))
+                print(f'*** Randomizing zones for region {region} ***')
+                for zone_idx in randomized:
+                    yield (region, [region.zones[zone_idx]])
+            else:
+                for zone in region.zones:
+                    yield (region, [zone])
 
     @classmethod
     def get_zone_shell_cmd(cls) -> Optional[str]:
@@ -316,7 +329,7 @@ class GCP(clouds.Cloud):
                 'Run the following commands:\n    '
                 # Install the Google Cloud SDK:
                 '  $ pip install google-api-python-client\n    '
-                '  $ conda install -c conda-forge google-cloud-sdk\n    '
+                '  $ conda install -c conda-forge google-cloud-sdk -y\n    '
                 # This authenticates the CLI to make `gsutil` work:
                 '  $ gcloud init\n    '
                 # This will generate

@@ -42,7 +42,7 @@ class SpotController:
             self._task_name, self._job_id)
         self._strategy_executor = recovery_strategy.StrategyExecutor.make(
             self._cluster_name, self.backend, self._task, retry_until_up,
-            self._handle_signal)
+            self._handle_signal, self._job_id)
 
     def _run(self):
         """Busy loop monitoring spot cluster status and handling recovery."""
@@ -134,10 +134,13 @@ class SpotController:
                 self._job_id,
                 failure_type=spot_state.SpotStatus.FAILED_NO_RESOURCE)
         except (Exception, SystemExit) as e:  # pylint: disable=broad-except
+            logger.error(traceback.format_stack())
             logger.error(traceback.format_exc())
             logger.error(f'Unexpected error occurred: {type(e).__name__}: {e}')
         finally:
+            logger.info('Calling terminate_cluster()')
             self._strategy_executor.terminate_cluster()
+            logger.info('Done terminate_cluster()')
             job_status = spot_state.get_status(self._job_id)
             # The job can be non-terminal if the controller exited abnormally,
             # e.g. failed to launch cluster after reaching the MAX_RETRY.

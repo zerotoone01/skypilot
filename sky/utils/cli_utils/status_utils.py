@@ -47,6 +47,7 @@ def show_status_table(cluster_records: List[Dict[str, Any]], show_all: bool):
         StatusColumn('HOURLY_PRICE', _get_price, show_by_default=False),
         StatusColumn('STATUS', _get_status),
         StatusColumn('AUTOSTOP', _get_autostop),
+        StatusColumn('NUM_TRIED_LOCATIONS', _get_num_tried_locations),
         StatusColumn('COMMAND',
                      _get_command,
                      trunc_length=_COMMAND_TRUNC_LENGTH if not show_all else 0),
@@ -213,6 +214,14 @@ def _get_autostop(cluster_status):
         # TODO(zhwu): check the status of the autostop cluster.
         autostop_str = str(cluster_status['autostop']) + ' min'
     return autostop_str
+
+
+def _get_num_tried_locations(cluster_status):
+    num_tried_locations_str = '-'
+    num = cluster_status['num_tried_locations']
+    if num is not None and num >= 0:
+        num_tried_locations_str = cluster_status['num_tried_locations']
+    return num_tried_locations_str
 
 
 def _get_price(cluster_status):

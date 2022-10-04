@@ -251,8 +251,8 @@ def stream_logs_by_id(job_id: int) -> str:
                         f'(status: {job_status.value}).')
             break
         logger.info(
-            f'INFO: The return code is {returncode}. '
-            f'Check the job status in {JOB_STATUS_CHECK_GAP_SECONDS} seconds.')
+            f'INFO: (Log streaming) Got return code {returncode}. Retrying '
+            f'in {JOB_STATUS_CHECK_GAP_SECONDS} seconds.')
         # If the tailing fails, it is likely that the cluster fails, so we wait
         # a while to make sure the spot state is updated by the controller, and
         # check the spot status again.
@@ -311,6 +311,9 @@ def dump_spot_job_queue() -> str:
             job['cluster_resources'] = '-'
             job['region'] = '-'
 
+        if job['num_tried_locations'] == -1:
+            job['num_tried_locations'] = '-'
+
     return json.dumps(jobs, indent=2)
 
 
@@ -326,7 +329,7 @@ def format_job_table(jobs: Dict[str, Any], show_all: bool) -> str:
     """Show all spot jobs."""
     columns = [
         'ID', 'NAME', 'RESOURCES', 'SUBMITTED', 'TOT. DURATION', 'JOB DURATION',
-        '#RECOVERIES', 'STATUS'
+        '#RECOVERIES', '#LOC', 'STATUS'
     ]
     if show_all:
         columns += ['STARTED', 'CLUSTER', 'REGION']
@@ -354,10 +357,12 @@ def format_job_table(jobs: Dict[str, Any], show_all: bool) -> str:
                                              absolute=True),
             job_duration,
             job['recovery_count'],
+            job['num_tried_locations'],
             job['status'].value,
         ]
         if not job['status'].is_terminal():
             status_counts[job['status'].value] += 1
+
         if show_all:
             # STARTED
             started = log_utils.readable_time_duration(job['start_at'],

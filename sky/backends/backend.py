@@ -1,6 +1,6 @@
 """Sky backend interface."""
 import typing
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 import sky
 from sky.utils import timeline
@@ -35,19 +35,31 @@ class Backend:
 
     @timeline.event
     @usage_lib.messages.usage.update_runtime('provision')
-    def provision(self,
-                  task: 'task_lib.Task',
-                  to_provision: Optional['resources.Resources'],
-                  dryrun: bool,
-                  stream_logs: bool,
-                  cluster_name: Optional[str] = None,
-                  retry_until_up: bool = False) -> ResourceHandle:
+    def provision(
+        self,
+        task: 'task_lib.Task',
+        to_provision: Optional['resources.Resources'],
+        dryrun: bool,
+        stream_logs: bool,
+        cluster_name: Optional[str] = None,
+        retry_until_up: bool = False,
+        blocked_regions: Optional[Set[str]] = None,
+        blocked_zones: Optional[Set[str]] = None,
+    ) -> ResourceHandle:
         if cluster_name is None:
             cluster_name = sky.backends.backend_utils.generate_cluster_name()
         usage_lib.messages.usage.update_cluster_name(cluster_name)
         usage_lib.messages.usage.update_actual_task(task)
-        return self._provision(task, to_provision, dryrun, stream_logs,
-                               cluster_name, retry_until_up)
+        return self._provision(
+            task,
+            to_provision,
+            dryrun,
+            stream_logs,
+            cluster_name,
+            retry_until_up,
+            blocked_regions=blocked_regions,
+            blocked_zones=blocked_zones,
+        )
 
     @timeline.event
     @usage_lib.messages.usage.update_runtime('sync_workdir')
@@ -94,21 +106,25 @@ class Backend:
     def teardown(self,
                  handle: ResourceHandle,
                  terminate: bool,
-                 purge: bool = False) -> None:
-        self._teardown(handle, terminate, purge)
+                 purge: bool = False) -> bool:
+        return self._teardown(handle, terminate, purge)
 
     def register_info(self, **kwargs) -> None:
         """Register backend-specific information."""
         pass
 
     # --- Implementations of the APIs ---
-    def _provision(self,
-                   task: 'task_lib.Task',
-                   to_provision: Optional['resources.Resources'],
-                   dryrun: bool,
-                   stream_logs: bool,
-                   cluster_name: str,
-                   retry_until_up: bool = False) -> ResourceHandle:
+    def _provision(
+        self,
+        task: 'task_lib.Task',
+        to_provision: Optional['resources.Resources'],
+        dryrun: bool,
+        stream_logs: bool,
+        cluster_name: str,
+        retry_until_up: bool = False,
+        blocked_regions: Optional[Set[str]] = None,
+        blocked_zones: Optional[Set[str]] = None,
+    ) -> ResourceHandle:
         raise NotImplementedError
 
     def _sync_workdir(self, handle: ResourceHandle, workdir: Path) -> None:
@@ -138,5 +154,5 @@ class Backend:
     def _teardown(self,
                   handle: ResourceHandle,
                   terminate: bool,
-                  purge: bool = False):
+                  purge: bool = False) -> bool:
         raise NotImplementedError

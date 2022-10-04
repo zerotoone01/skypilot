@@ -15,8 +15,7 @@ Current task launcher:
 import enum
 import tempfile
 import os
-import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Set
 
 import colorama
 
@@ -39,7 +38,6 @@ from sky.utils import ux_utils
 logger = sky_logging.init_logger(__name__)
 
 OptimizeTarget = optimizer.OptimizeTarget
-_MAX_SPOT_JOB_LENGTH = 10
 
 # Message thrown when APIs sky.{exec,launch,spot_launch}() received a string
 # instead of a Dag.  CLI (cli.py) is implemented by us so should not trigger
@@ -105,6 +103,8 @@ def _execute(
     cluster_name: Optional[str] = None,
     detach_run: bool = False,
     idle_minutes_to_autostop: Optional[int] = None,
+    blocked_regions: Optional[Set[str]] = None,
+    blocked_zones: Optional[Set[str]] = None,
 ) -> None:
     """Runs a DAG.
 
@@ -182,12 +182,16 @@ def _execute(
     try:
         if stages is None or Stage.PROVISION in stages:
             if handle is None:
-                handle = backend.provision(task,
-                                           task.best_resources,
-                                           dryrun=dryrun,
-                                           stream_logs=stream_logs,
-                                           cluster_name=cluster_name,
-                                           retry_until_up=retry_until_up)
+                handle = backend.provision(
+                    task,
+                    task.best_resources,
+                    dryrun=dryrun,
+                    stream_logs=stream_logs,
+                    cluster_name=cluster_name,
+                    retry_until_up=retry_until_up,
+                    blocked_regions=blocked_regions,
+                    blocked_zones=blocked_zones,
+                )
 
         if dryrun:
             logger.info('Dry run finished.')
@@ -224,15 +228,9 @@ def _execute(
         # UX: print live clusters to make users aware (to save costs).
         # Needed because this finally doesn't always get executed on errors.
         # Disable the usage collection for this status command.
-        env = dict(os.environ,
-                   **{env_options.Options.DISABLE_LOGGING.value: '1'})
-        if cluster_name == spot.SPOT_CONTROLLER_NAME:
-            # For spot controller task, it requires a while to have the
-            # managed spot status shown in the status table.
-            time.sleep(0.5)
-            subprocess_utils.run(
-                f'sky spot status | head -n {_MAX_SPOT_JOB_LENGTH}')
-        else:
+        if cluster_name != spot.SPOT_CONTROLLER_NAME:
+            env = dict(os.environ,
+                       **{env_options.Options.DISABLE_LOGGING.value: '1'})
             subprocess_utils.run('sky status', env=env)
         print()
         print('\x1b[?25h', end='')  # Show cursor.
@@ -251,6 +249,8 @@ def launch(
     backend: Optional[backends.Backend] = None,
     optimize_target: OptimizeTarget = OptimizeTarget.COST,
     detach_run: bool = False,
+    blocked_regions: Optional[Set[str]] = None,
+    blocked_zones: Optional[Set[str]] = None,
 ):
     """Launch a sky.DAG (rerun setup if cluster exists).
 
@@ -290,6 +290,8 @@ def launch(
         cluster_name=cluster_name,
         detach_run=detach_run,
         idle_minutes_to_autostop=idle_minutes_to_autostop,
+        blocked_regions=blocked_regions,
+        blocked_zones=blocked_zones,
     )
 
 
@@ -362,11 +364,8 @@ def spot_launch(
 
     change_default_value = dict()
     if not resources.use_spot_specified:
-        logger.info('Field use_spot not specified; defaulting to True.')
         change_default_value['use_spot'] = True
     if resources.spot_recovery is None:
-        logger.info('No spot recovery strategy specified; defaulting to '
-                    f'{spot.SPOT_DEFAULT_STRATEGY}.')
         change_default_value['spot_recovery'] = spot.SPOT_DEFAULT_STRATEGY
 
     new_resources = resources.copy(**change_default_value)
