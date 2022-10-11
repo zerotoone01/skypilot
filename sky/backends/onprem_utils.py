@@ -368,6 +368,13 @@ def launch_ray_on_local_cluster(
             head_cmd,
             failure_message='Failed to launch ray on head node.')
 
+    backend_utils.run_command_and_handle_ssh_failure(
+        head_runner,
+        ('(ps ux | grep -v \'bash\\|grep\' | grep -q sky.onprem.job_controller)'
+         ' || (mkdir -p ~/.sky/local && nohup python3 -m sky.onprem.job_controller >> ~/.sky/local/job_controller.log 2>&1 &) '
+        ),
+        failure_message='Failed to launch job controller on head node.')
+
     if not worker_runners:
         return
 
