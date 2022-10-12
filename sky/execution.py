@@ -30,6 +30,7 @@ from sky import sky_logging
 from sky import spot
 from sky import task as task_lib
 from sky.backends import backend_utils
+from sky.backends import onprem_utils
 from sky.clouds import gcp
 from sky.data import data_utils
 from sky.data import storage as storage_lib
@@ -198,6 +199,11 @@ def _execute(
         if dryrun:
             logger.info('Dry run finished.')
             return
+
+        # Checks and autoscales to hybrid cloud when needed
+        # (only for local clusters).
+        onprem_utils.scale_to_cloud(dag, handle)
+        task = dag.tasks[0]
 
         if stages is None or Stage.SYNC_WORKDIR in stages:
             if task.workdir is not None:

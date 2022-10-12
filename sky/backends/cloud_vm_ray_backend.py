@@ -1494,7 +1494,7 @@ class CloudVmRayBackend(backends.Backend):
             task resources != cluster resources; hence, this method is needed
             to correct this.
             """
-            self.local_handle = None
+            self.local_handle = {}
             local_file = os.path.expanduser(
                 onprem_utils.SKY_USER_LOCAL_CONFIG_PATH.format(
                     self.cluster_name))
@@ -1508,7 +1508,6 @@ class CloudVmRayBackend(backends.Backend):
             if os.path.isfile(local_file):
                 config = onprem_utils.get_local_cluster_config_or_error(
                     self.cluster_name)
-                self.local_handle = {}
                 cluster_config = config['cluster']
                 auth_config = config['auth']
                 ips = cluster_config['ips']
@@ -1608,6 +1607,7 @@ class CloudVmRayBackend(backends.Backend):
 
         mismatch_str = (f'To fix: specify a new cluster name, or down the '
                         f'existing cluster first: sky down {cluster_name}')
+        return
         if hasattr(handle, 'local_handle') and handle.local_handle is not None:
             launched_resources = handle.local_handle['cluster_resources']
             usage_lib.messages.usage.update_local_cluster_resources(
@@ -2163,8 +2163,15 @@ class CloudVmRayBackend(backends.Backend):
         # Check the task resources vs the cluster resources. Since `sky exec`
         # will not run the provision and _check_existing_cluster
         self.check_resources_fit_cluster(handle, task)
-
-        resources_str = backend_utils.get_task_resources_str(task)
+        if handle.local_handle and handle.local_handle.get(
+                'autoscale_resources', None):
+            resources_task = task_lib.Task(
+                num_nodes=handle.local_handle['autoscale_nodes'])
+            resources_task.set_resources(
+                handle.local_handle['autoscale_resources'])
+            resources_str = backend_utils.get_task_resources_str(resources_task)
+        else:
+            resources_str = backend_utils.get_task_resources_str(task)
         job_id = self._add_job(handle, task.name, resources_str)
 
         is_tpu_vm_pod = tpu_utils.is_tpu_vm_pod(handle.launched_resources)

@@ -1,5 +1,7 @@
 """Util constants/functions for Sky Onprem."""
 import ast
+import colorama
+import getpass
 import json
 import os
 import socket
@@ -11,10 +13,13 @@ import click
 import rich.console as rich_console
 import yaml
 
+import sky
+from sky import clouds
 from sky import global_user_state
 from sky import sky_logging
 from sky.backends import backend_utils
 from sky.skylet import constants
+from sky.skylet import job_lib
 from sky.utils import command_runner
 from sky.utils import common_utils
 from sky.utils import schemas
@@ -368,11 +373,10 @@ def launch_ray_on_local_cluster(
             head_cmd,
             failure_message='Failed to launch ray on head node.')
 
+    job_controller_cmd = 'nohup python3 -m sky.onprem.job_controller >> ~/.sky/local/job_controller.log 2>&1 &'
     backend_utils.run_command_and_handle_ssh_failure(
         head_runner,
-        ('(ps ux | grep -v \'bash\\|grep\' | grep -q sky.onprem.job_controller)'
-         ' || (mkdir -p ~/.sky/local && nohup python3 -m sky.onprem.job_controller >> ~/.sky/local/job_controller.log 2>&1 &) '
-        ),
+        job_controller_cmd,
         failure_message='Failed to launch job controller on head node.')
 
     if not worker_runners:
@@ -503,3 +507,99 @@ def check_local_cloud_args(cloud: Optional[str] = None,
                     'See `sky status` for local cluster name(s).')
 
         return False
+
+
+def scale_to_cloud(dag, handle):
+    task = dag.tasks[0]
+    task_resources = list(task.resources)[0]
+    task_config = task.to_yaml_config()
+    # Autoscaling only allowed for local cloud...for now...
+    if not isinstance(task_resources.cloud, clouds.Local):
+        return
+
+    head_ip = handle.head_ip
+    auth = common_utils.read_yaml(handle.cluster_yaml)['auth']
+    ssh_user = auth['ssh_user']
+    ssh_key = auth['ssh_private_key']
+    ssh_credentials = (ssh_user, ssh_key, 'sky-scale-tester')
+    head_runner = command_runner.SSHCommandRunner(head_ip, *ssh_credentials)
+
+    assert len(task.resources) == 1, task
+    job_accs = task_resources.accelerators.copy()
+    job_accs = job_accs if job_accs else {}
+    job_accs['CPU'] = 0.5
+    code = textwrap.dedent(f"""\
+        import socket
+
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((socket.gethostname(), 65432))
+        client_socket.sendall(b"{job_accs!r}")
+        data = client_socket.recv(1024)
+        print(data.decode('utf-8'))
+        client_socket.close()
+        """)
+
+    ssh_credentials = (ssh_user, ssh_key, 'sky-admin-deploy')
+
+    with tempfile.NamedTemporaryFile('w', prefix='sky-autoscale-client-') as fp:
+        fp.write(code)
+        fp.flush()
+        head_runner.run('mkdir -p ~/.sky/autoscaled_jobs', stream_logs=False)
+        head_runner.rsync(source=fp.name,
+                          target='~/.sky/autoscaled_jobs/hybrid_client.py',
+                          up=True,
+                          stream_logs=False)
+        spillover_decision = backend_utils.run_command_and_handle_ssh_failure(
+            head_runner,
+            f'python3 ~/.sky/autoscaled_jobs/hybrid_client.py',
+            failure_message=f'Failed to poll admin job controller')
+
+    spillover_decision = int(spillover_decision.strip())
+    if spillover_decision != 1:
+        return
+
+    del task_config['resources']['cloud']
+    del task_config['resources']['spot_recovery']
+
+    code = job_lib.JobLibCodeGen.get_job_queue(getpass.getuser(), True)
+    rc, jobs_payload, stderr = head_runner.run(code, require_outputs=True)
+    if rc != 0:
+        raise RuntimeError(
+            f'{jobs_payload + stderr}\n{colorama.Fore.RED}'
+            f'Failed to get job queue on cluster {handle.cluster_name}.'
+            f'{colorama.Style.RESET_ALL}')
+    jobs_payload = job_lib.load_job_queue(jobs_payload)
+    # Get the next job id.
+    job_id = jobs_payload[0]['job_id'] + 1
+    cluster_name = f'{handle.cluster_name}-{job_id}'
+
+    with tempfile.NamedTemporaryFile(prefix=f'sky-autoscale-', mode='w') as fp:
+        common_utils.dump_yaml(fp.name, task_config)
+        head_runner.rsync(source=fp.name,
+                          target=f'~/.sky/autoscaled_jobs/{cluster_name}.yml',
+                          up=True,
+                          stream_logs=False)
+
+    # Create new tasks for autoscaled job.
+    local_yaml_config = {
+        'name': f'{task.name}-autoscaled',
+        'resources': {
+            'cloud': 'local'
+        },
+        # Ensures the `run` field runs on the head node of the local cluster.
+        'num_nodes': 1,
+        'run': f'sky launch -c {cluster_name} -y -i 1 ~/.sky/autoscaled_jobs/{cluster_name}.yml'
+    }
+    with tempfile.NamedTemporaryFile(prefix=f'sky-autoscale-', mode='w') as fp:
+        common_utils.dump_yaml(fp.name, local_yaml_config)
+        dag.remove(task)
+        dag.add(sky.Task.from_yaml(fp.name))
+
+    handle.local_handle['autoscale_resources'] = task_resources
+    handle.local_handle['autoscale_nodes'] = task.num_nodes
+
+    # backend_utils.run_command_and_handle_ssh_failure(
+    #     head_runner,
+    #     f'sky launch -c {cluster_name} -y -i 1 ~/.sky/autoscaled_jobs/{cluster_name}.yml',
+    #     failure_message=f'Failed to launch job.')
+    # exit(0)
