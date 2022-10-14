@@ -525,7 +525,8 @@ def scale_to_cloud(dag, handle):
     head_runner = command_runner.SSHCommandRunner(head_ip, *ssh_credentials)
 
     assert len(task.resources) == 1, task
-    job_accs = task_resources.accelerators.copy()
+    job_accs = task_resources.accelerators.copy(
+    ) if task_resources.accelerators else {}
     job_accs = job_accs if job_accs else {}
     job_accs['CPU'] = 0.5
     code = textwrap.dedent(f"""\
