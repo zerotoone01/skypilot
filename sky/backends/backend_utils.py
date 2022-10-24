@@ -101,7 +101,11 @@ _MAX_CLUSTER_NAME_LEN_FOR_GCP = 35
 # Note: This value cannot be too small, otherwise OOM issue may occur.
 DEFAULT_TASK_CPU_DEMAND = 0.5
 
-SKY_RESERVED_CLUSTER_NAMES = [spot_lib.SPOT_CONTROLLER_NAME]
+# Mapping from reserved cluster names to the corresponding group name (logging purpose).
+# NOTE: each group can only have one reserved cluster name for now.
+SKY_RESERVED_CLUSTER_NAMES = {
+    spot_lib.SPOT_CONTROLLER_NAME: 'Managed spot controller'
+}
 
 # Filelocks for the cluster status change.
 CLUSTER_STATUS_LOCK_PATH = os.path.expanduser('~/.sky/.{}.lock')
@@ -1742,17 +1746,17 @@ def get_clusters(
 ) -> List[Dict[str, Any]]:
     """Returns a list of cached cluster records.
 
-    Combs through the Sky database (in ~/.sky/state.db) to get a list of records
+    Combs through the database (in ~/.sky/state.db) to get a list of records
     corresponding to launched clusters.
 
     Args:
-        include_reserved: Whether to include sky-reserved clusters, e.g. spot
+        include_reserved: Whether to include reserved clusters, e.g. spot
             controller.
         refresh: Whether to refresh the status of the clusters. (Refreshing will
             set the status to STOPPED if the cluster cannot be pinged.)
         cloud_filter: Sets which clouds to filer through from the global user
-            state. Supports three values, 'all' for all clouds, 'public' for public
-            clouds only, and 'local' for only local clouds.
+            state. Supports three values, 'all' for all clouds, 'public' for
+            public clouds only, and 'local' for only local clouds.
 
     Returns:
         A list of cluster records.
@@ -1927,13 +1931,11 @@ def check_cluster_name_not_reserved(
     If the cluster name is reserved, return the error message. Otherwise,
     return None.
     """
-    usage = 'internal use'
-    if cluster_name == spot_lib.SPOT_CONTROLLER_NAME:
-        usage = 'spot controller'
-    msg = f'Cluster {cluster_name!r} is reserved for {usage}.'
-    if operation_str is not None:
-        msg += f' {operation_str} is not allowed.'
     if cluster_name in SKY_RESERVED_CLUSTER_NAMES:
+        msg = (f'Cluster {cluster_name!r} is reserved for '
+               f'{SKY_RESERVED_CLUSTER_NAMES[cluster_name].lower()}.')
+        if operation_str is not None:
+            msg += f' {operation_str} is not allowed.'
         with ux_utils.print_exception_no_traceback():
             raise ValueError(msg)
 
