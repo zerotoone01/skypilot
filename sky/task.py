@@ -134,6 +134,7 @@ class Task:
         self.estimated_outputs_size_gigabytes = None
         # Default to CPUNode
         self.resources = {sky.Resources()}
+        self.spillover = False
         self.time_estimator_func = None
         self.file_mounts = None
 
@@ -291,6 +292,10 @@ class Task:
         resources = config.pop('resources', None)
         resources = sky.Resources.from_yaml_config(resources)
 
+        spillover = config.pop('spillover', None)
+        if spillover:
+            task.spillover = True
+
         task.set_resources({resources})
         assert not config, f'Invalid task args: {config.keys()}'
         return task
@@ -310,6 +315,8 @@ class Task:
             resources = list(self.resources)[0]
             add_if_not_none('resources', resources.to_yaml_config())
         add_if_not_none('num_nodes', self.num_nodes)
+
+        add_if_not_none('spillover', self.spillover)
 
         if self.inputs is not None:
             add_if_not_none('inputs',
@@ -504,7 +511,7 @@ class Task:
         return self.set_storage_mounts(task_storage_mounts)
 
     def get_preferred_store_type(self) -> storage_lib.StoreType:
-        # TODO(zhwu, romilb): The optimizer should look at the source and
+        # TODO(mluo, zhwu, romilb): The optimizer should look at the source and
         #  destination to figure out the right stores to use. For now, we
         #  use a heuristic solution to find the store type by the following
         #  order:
@@ -519,6 +526,8 @@ class Task:
         else:
             resources = list(self.resources)[0]
             storage_cloud = resources.cloud
+            if isinstance(storage_cloud, clouds.Local):
+                storage_cloud = None
             if storage_cloud is None:
                 # Get the first enabled cloud.
                 enabled_clouds = global_user_state.get_enabled_clouds()

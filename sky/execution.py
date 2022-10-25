@@ -663,6 +663,7 @@ def _maybe_translate_local_file_mounts_and_sync_up(
         # whenever task.storage_mounts is non-empty.
         logger.info(f'{colorama.Fore.YELLOW}Uploading sources to cloud storage.'
                     f'{colorama.Style.RESET_ALL} See: sky storage ls')
+
     task.sync_storage_mounts()
 
     # Step 5: Add the file download into the file mounts, such as

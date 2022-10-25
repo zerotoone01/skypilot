@@ -2089,6 +2089,8 @@ class CloudVmRayBackend(backends.Backend):
                 else:
                     # Sky logs. Not using subprocess.run since it will make the
                     # ssh keep connected after ctrl-c.
+                    import pdb
+                    pdb.set_trace()
                     self.tail_logs(handle, job_id)
         finally:
             name = handle.cluster_name

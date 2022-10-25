@@ -17,6 +17,7 @@ auth:
 # (Ray Autoscaler Bug) `file_mounts` only mounts on head, not worker nodes.
 file_mounts: {
   "{{sky_ray_yaml_remote_path}}": "{{sky_ray_yaml_local_path}}",
+  "{{ssh_private_key}}": "{{ssh_private_key}}",
   "{{sky_remote_path}}": "{{sky_local_path}}",
 {%- for remote_path, local_path in credentials.items() %}
   "{{remote_path}}": "{{local_path}}",

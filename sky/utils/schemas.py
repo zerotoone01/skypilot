@@ -127,6 +127,9 @@ def get_task_schema():
             'resources': {
                 'type': 'object',
             },
+            'spillover': {
+                'type': 'boolean',
+            },
             # storage config is validated separately using STORAGE_SCHEMA
             'file_mounts': {
                 'type': 'object',

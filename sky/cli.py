@@ -894,6 +894,11 @@ def _make_task_from_entrypoint_with_overrides(
         if acc.startswith('tpu-') and task.num_nodes > 1:
             raise ValueError('Multi-node TPU cluster is not supported. '
                              f'Got num_nodes={task.num_nodes}.')
+
+    if cloud == 'local':
+        task = sky.execution._maybe_translate_local_file_mounts_and_sync_up(
+            task)
+
     return task
 
 

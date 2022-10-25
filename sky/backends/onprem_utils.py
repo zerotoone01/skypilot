@@ -1,6 +1,7 @@
 """Util constants/functions for Sky Onprem."""
 import ast
 import colorama
+import copy
 import getpass
 import json
 import os
@@ -17,7 +18,9 @@ import sky
 from sky import clouds
 from sky import global_user_state
 from sky import sky_logging
+from sky import spot
 from sky.backends import backend_utils
+from sky.data import storage as storage_lib
 from sky.skylet import constants
 from sky.skylet import job_lib
 from sky.utils import command_runner
@@ -514,7 +517,7 @@ def scale_to_cloud(dag, handle):
     task_resources = list(task.resources)[0]
     task_config = task.to_yaml_config()
     # Autoscaling only allowed for local cloud...for now...
-    if not isinstance(task_resources.cloud, clouds.Local):
+    if not isinstance(task_resources.cloud, clouds.Local) or not task.spillover:
         return
 
     head_ip = handle.head_ip
@@ -598,9 +601,3 @@ def scale_to_cloud(dag, handle):
 
     handle.local_handle['autoscale_resources'] = task_resources
     handle.local_handle['autoscale_nodes'] = task.num_nodes
-
-    # backend_utils.run_command_and_handle_ssh_failure(
-    #     head_runner,
-    #     f'sky launch -c {cluster_name} -y -i 1 ~/.sky/autoscaled_jobs/{cluster_name}.yml',
-    #     failure_message=f'Failed to launch job.')
-    # exit(0)
