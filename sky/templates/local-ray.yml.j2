@@ -18,6 +18,7 @@ auth:
 file_mounts: {
   "{{sky_ray_yaml_remote_path}}": "{{sky_ray_yaml_local_path}}",
   "{{ssh_private_key}}": "{{ssh_private_key}}",
+  "{{ssh_private_key}}.pub": "{{ssh_private_key}}.pub",
   "{{sky_remote_path}}": "{{sky_local_path}}",
 {%- for remote_path, local_path in credentials.items() %}
   "{{remote_path}}": "{{local_path}}",
@@ -27,6 +28,7 @@ file_mounts: {
 # List of shell commands to run to set up nodes.
 # (Ray Autoscaler Bug) `setup_commands` only runs on head, not on worker nodes.
 setup_commands:
+  - chmod 400 {{ssh_private_key}}
   - (type -a python | grep -q python3) || echo 'alias python=python3' >> ~/.bashrc;
     (type -a pip | grep -q pip3) || echo 'alias pip=pip3' >> ~/.bashrc;
   - pip3 install -U ray[default]=={{ray_version}} && mkdir -p ~/sky_workdir && mkdir -p ~/.sky/sky_app;

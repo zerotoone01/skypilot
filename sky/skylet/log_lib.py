@@ -307,6 +307,7 @@ def run_bash_command_with_log(bash_command: str,
         else:
             subprocess_cmd = inner_command
 
+        ray_job_id = job_lib.make_ray_job_id(job_id, job_owner)
         return run_with_log(subprocess_cmd,
                             log_path,
                             ray_job_id=job_lib.make_ray_job_id(

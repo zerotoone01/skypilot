@@ -9,12 +9,16 @@ import socket
 import tempfile
 import textwrap
 from typing import Any, Dict, List, Optional, Tuple
+import time
+import shlex
+import subprocess
 
 import click
 import rich.console as rich_console
 import yaml
 
 import sky
+from sky import backends
 from sky import clouds
 from sky import global_user_state
 from sky import sky_logging
@@ -512,12 +516,37 @@ def check_local_cloud_args(cloud: Optional[str] = None,
         return False
 
 
+def setup_local_cluster_on_onprem(dag, handle):
+    cluster_name = handle.cluster_name
+    yaml_path = SKY_USER_LOCAL_CONFIG_PATH.format(cluster_name)
+    abs_yaml_path = os.path.expanduser(yaml_path)
+    cluster_config = common_utils.read_yaml(abs_yaml_path)
+
+    cluster_config['cluster']['ips'] = ['127.0.0.1']
+    cluster_config['cluster']['name'] = 'local'
+
+    auth = cluster_config['auth']
+    ssh_user = auth['ssh_user']
+    ssh_key = auth['ssh_private_key']
+    ssh_credentials = (ssh_user, ssh_key, 'sky-scale-tester')
+    head_runner = command_runner.SSHCommandRunner(handle.head_ip,
+                                                  *ssh_credentials)
+
+    with tempfile.NamedTemporaryFile('w', prefix='sky-local-yaml-') as fp:
+        common_utils.dump_yaml(fp.name, cluster_config)
+        head_runner.rsync(source=fp.name,
+                          target='~/.sky/local/local.yml',
+                          up=True,
+                          stream_logs=False)
+
+
 def scale_to_cloud(dag, handle):
     task = dag.tasks[0]
     task_resources = list(task.resources)[0]
     task_config = task.to_yaml_config()
     # Autoscaling only allowed for local cloud...for now...
-    if not isinstance(task_resources.cloud, clouds.Local) or not task.spillover:
+    if not isinstance(task_resources.cloud,
+                      clouds.Local) or handle.cluster_name == 'local':
         return
 
     head_ip = handle.head_ip
@@ -548,25 +577,30 @@ def scale_to_cloud(dag, handle):
     with tempfile.NamedTemporaryFile('w', prefix='sky-autoscale-client-') as fp:
         fp.write(code)
         fp.flush()
-        head_runner.run('mkdir -p ~/.sky/autoscaled_jobs', stream_logs=False)
+        head_runner.run('mkdir -p ~/.sky/remote_jobs', stream_logs=False)
         head_runner.rsync(source=fp.name,
-                          target='~/.sky/autoscaled_jobs/hybrid_client.py',
+                          target='~/.sky/remote_jobs/hybrid_client.py',
                           up=True,
                           stream_logs=False)
         spillover_decision = backend_utils.run_command_and_handle_ssh_failure(
             head_runner,
-            f'python3 ~/.sky/autoscaled_jobs/hybrid_client.py',
+            f'python3 ~/.sky/remote_jobs/hybrid_client.py',
             failure_message=f'Failed to poll admin job controller')
 
-    spillover_decision = int(spillover_decision.strip())
-    if spillover_decision != 1:
-        return
+    setup_local_cluster_on_onprem(dag, handle)
+
+    spillover_decision = bool(int(
+        spillover_decision.strip())) and task.spillover
+
+    spillover_decision = False
 
     del task_config['resources']['cloud']
     del task_config['resources']['spot_recovery']
 
     code = job_lib.JobLibCodeGen.get_job_queue(getpass.getuser(), True)
-    rc, jobs_payload, stderr = head_runner.run(code, require_outputs=True)
+    rc, jobs_payload, stderr = head_runner.run(code,
+                                               require_outputs=True,
+                                               stream_logs=False)
     if rc != 0:
         raise RuntimeError(
             f'{jobs_payload + stderr}\n{colorama.Fore.RED}'
@@ -574,17 +608,135 @@ def scale_to_cloud(dag, handle):
             f'{colorama.Style.RESET_ALL}')
     jobs_payload = job_lib.load_job_queue(jobs_payload)
     # Get the next job id.
-    job_id = jobs_payload[0]['job_id'] + 1
+    job_id = 0 if len(jobs_payload) == 0 else jobs_payload[0]['job_id'] + 1
+    job_id = 42
     cluster_name = f'{handle.cluster_name}-{job_id}'
 
     with tempfile.NamedTemporaryFile(prefix=f'sky-autoscale-', mode='w') as fp:
         common_utils.dump_yaml(fp.name, task_config)
         head_runner.rsync(source=fp.name,
-                          target=f'~/.sky/autoscaled_jobs/{cluster_name}.yml',
+                          target=f'~/.sky/remote_jobs/{cluster_name}.yml',
                           up=True,
                           stream_logs=False)
 
     # Create new tasks for autoscaled job.
+    if spillover_decision == 0:
+        code = [
+            'import os',
+            'from sky.backends import onprem_utils',
+            f'onprem_utils.run_local_job({job_id!r},{handle.cluster_name!r})',
+        ]
+        code = ';'.join(code)
+
+        python_cmd = f'python3 -u -c {shlex.quote(code)}'
+        head_runner.run(python_cmd, stream_logs=True)
+    else:
+        code = [
+            'import os',
+            'from sky.backends import onprem_utils',
+            f'onprem_utils.run_cloud_job({job_id!r},{handle.cluster_name!r})',
+        ]
+        code = ';'.join(code)
+
+        python_cmd = f'python3 -u -c {shlex.quote(code)}'
+        head_runner.run(python_cmd, stream_logs=True)
+
+    backend = backends.CloudVmRayBackend()
+    try:
+        backend.tail_logs(handle, job_id)
+    finally:
+        style = colorama.Style
+        fore = colorama.Fore
+        logger.info(
+            f'{fore.CYAN}Job ID: '
+            f'{style.BRIGHT}{job_id}{style.RESET_ALL}'
+            '\nTo cancel the job:\t'
+            f'{backend_utils.BOLD}sky cancel {handle.cluster_name} {job_id}'
+            f'{backend_utils.RESET_BOLD}'
+            '\nTo stream the logs:\t'
+            f'{backend_utils.BOLD}sky logs {handle.cluster_name} {job_id}'
+            f'{backend_utils.RESET_BOLD}'
+            '\nTo view the job queue:\t'
+            f'{backend_utils.BOLD}sky queue {handle.cluster_name}'
+            f'{backend_utils.RESET_BOLD}')
+        backend.post_execute(handle, False)
+
+    exit(0)
+
+
+def run_local_job(job_id: int, cluster_name: str):
+    file_name = f'{cluster_name}-{job_id}'
+    file_path = os.path.expanduser(f'~/.sky/remote_jobs/{file_name}.yml')
+    run_cmd = f'sky launch -c local -y {file_path}'
+    handle = global_user_state.get_handle_from_cluster_name('local')
+    head_ip = handle.head_ip
+    auth = common_utils.read_yaml(handle.cluster_yaml)['auth']
+    ssh_user = auth['ssh_user']
+    ssh_key = auth['ssh_private_key']
+    ssh_credentials = (ssh_user, ssh_key, 'sky-scale-tester')
+    head_runner = command_runner.SSHCommandRunner(head_ip, *ssh_credentials)
+    job_lib.set_status(job_id, job_lib.JobStatus.INIT)
+    #with console.status('Waiting for job logs on local cluster...'):
+    run_cmd = shlex.split(run_cmd)
+    modified_env = os.environ.copy()
+    modified_env.update({'JOB_ID': str(job_id)})
+    subprocess.Popen(run_cmd, env=modified_env)  #, stdout=subprocess.PIPE)
+
+
+def _show_cloud_logs(file_path: str, job_id: int):
+    cluster_name = getpass.getuser() + "-" + str(job_id)
+    run_cmd = f'sky launch -c {cluster_name} -y --cloud aws {file_path}'
+    split_cmd = shlex.split(run_cmd)
+    modified_env = os.environ.copy()
+
+    print('Migrating job to the cloud.')
+    subprocess.Popen(split_cmd,
+                     env=modified_env,
+                     stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE)
+    # import pdb
+    # pdb.set_trace()
+    cluster_status, _ = backend_utils.refresh_cluster_status_handle(
+        cluster_name)
+    while cluster_status is None or cluster_status != global_user_state.ClusterStatus.UP:
+        time.sleep(2)
+        cluster_status, _ = backend_utils.refresh_cluster_status_handle(
+            cluster_name)
+
+    backend = backends.CloudVmRayBackend()
+    handle = global_user_state.get_handle_from_cluster_name(cluster_name)
+    job_status = backend.get_job_status(handle, job_ids=[1], stream_logs=False)
+    while list(job_status.keys())[0] == 'null':
+        print(job_status)
+        time.sleep(1)
+        job_status = backend.get_job_status(handle, stream_logs=False)
+    backend.tail_logs(handle, 1)
+
+
+# run by admin controller
+def run_cloud_job(job_id: int, cluster_name: str):
+    file_name = f'{cluster_name}-{job_id}'
+    file_path = os.path.expanduser(f'~/.sky/remote_jobs/{file_name}.yml')
+    from sky import task as task_lib
+    task = task_lib.Task.from_yaml(file_path)
+
+    # Generating code for nested Sky launch + censored logs (only run logs)
+    _PREFIX = ['from sky.backends import onprem_utils']
+    code = [
+        f'onprem_utils._show_cloud_logs({file_path!r},{job_id!r})',
+    ]
+    code = _PREFIX + code
+    code = ';'.join(code)
+    code = f'python3 -u -c {shlex.quote(code)}'
+
+    handle = global_user_state.get_handle_from_cluster_name('local')
+    head_ip = handle.head_ip
+    auth = common_utils.read_yaml(handle.cluster_yaml)['auth']
+    ssh_user = auth['ssh_user']
+    ssh_key = auth['ssh_private_key']
+    ssh_credentials = (ssh_user, ssh_key, 'sky-scale-tester')
+    head_runner = command_runner.SSHCommandRunner(head_ip, *ssh_credentials)
+
     local_yaml_config = {
         'name': f'{task.name}-autoscaled',
         'resources': {
@@ -592,12 +744,75 @@ def scale_to_cloud(dag, handle):
         },
         # Ensures the `run` field runs on the head node of the local cluster.
         'num_nodes': 1,
-        'run': f'sky launch -c {cluster_name} -y -i 1 ~/.sky/autoscaled_jobs/{cluster_name}.yml'
+        'run': code,
     }
-    with tempfile.NamedTemporaryFile(prefix=f'sky-autoscale-', mode='w') as fp:
-        common_utils.dump_yaml(fp.name, local_yaml_config)
-        dag.remove(task)
-        dag.add(sky.Task.from_yaml(fp.name))
+    job_lib.set_status(job_id, job_lib.JobStatus.INIT)
+    to_cloud_yaml = os.path.expanduser(
+        f'~/.sky/remote_jobs/{file_name}-cloud.yml')
+    common_utils.dump_yaml(to_cloud_yaml, local_yaml_config)
+    run_cmd = f'sky launch -c local -y {to_cloud_yaml}'
+    run_cmd = shlex.split(run_cmd)
+    modified_env = os.environ.copy()
+    modified_env.update({'JOB_ID': str(job_id)})
+    subprocess.Popen(run_cmd,
+                     env=modified_env,
+                     stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE)
 
-    handle.local_handle['autoscale_resources'] = task_resources
-    handle.local_handle['autoscale_nodes'] = task.num_nodes
+    # from sky import task as task_lib
+    # task = task_lib.Task.from_yaml(file_path)
+    # job_queue = job_lib.dump_job_queue(getpass.getuser(), all_jobs=True)
+    # jobs_payload = job_lib.load_job_queue(job_queue)
+    # end_job_id = jobs_payload[0]['job_id']
+    # if end_job_id < job_id:
+    #     # Make job entry if it does not exist
+    #     job_name = task.name
+    #     username = getpass.getuser()
+    #     run_timestamp = backend_utils.get_run_timestamp()
+    #     resources_str = backend_utils.get_task_resources_str(task)
+    #     job_id = job_lib.add_job(job_name, username, run_timestamp,
+    #                              resources_str)
+    # job_log_dir = job_lib.get_run_timestamp(job_id)
+
+    # cluster_status, _ = backend_utils.refresh_cluster_status_handle(file_name)
+    # while not cluster_status:
+    #     time.sleep(1)
+    #     cluster_status, _ = backend_utils.refresh_cluster_status_handle(
+    #         file_name)
+
+    # while cluster_status:
+    #     if cluster_status == global_user_state.ClusterStatus.UP:
+    #         break
+    #     time.sleep(5)
+    #     print(cluster_status)
+    #     cluster_status, _ = backend_utils.refresh_cluster_status_handle(
+    #         file_name)
+
+    # backend = backends.CloudVmRayBackend()
+    # handle = global_user_state.get_handle_from_cluster_name(file_name)
+    # job_status = backend.get_job_status(handle, stream_logs=False)
+    # while list(job_status.keys())[0] == 'null':
+    #     time.sleep(2)
+
+    # first = True
+    # while job_status:
+    #     job_key = list(job_status.keys())[0]
+    #     job_status = job_status[job_key]
+
+    # if job_status == job_lib.JobStatus.RUNNING:
+    #     job_lib.set_job_started(job_id)
+    # else:
+    #     job_lib.set_status(job_id, job_status)
+
+    # if job_status in [
+    #         job_lib.JobStatus.SUCCEEDED, job_lib.JobStatus.FAILED
+    # ]:
+    #     break
+
+    # print("Waiting for job to finish")
+    # print(job_status)
+    # time.sleep(2)
+    # job_status = backend.get_job_status(handle, stream_logs=False)
+
+    # print('Done running on the cloud.')
+    # subprocess.check_output(run_cmd, shell=True)

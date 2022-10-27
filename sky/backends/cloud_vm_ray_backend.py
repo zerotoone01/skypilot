@@ -444,7 +444,7 @@ class RetryingVmProvisioner(object):
         self._blocked_regions = set()
         self._blocked_zones = set()
         self._blocked_launchable_resources = set()
-
+        self._log_dir = log_dir
         self.log_dir = os.path.expanduser(log_dir)
         self._dag = dag
         self._optimize_target = optimize_target
@@ -966,6 +966,28 @@ class RetryingVmProvisioner(object):
                 'region_name': region.name,
                 'zone_str': zone_str,
             }
+
+            if 'JOB_ID' in os.environ:
+                job_id = os.environ['JOB_ID']
+                code = job_lib.JobLibCodeGen.get_run_timestamp_with_globbing(
+                    [job_id])
+                run_timestamps = subprocess.check_output(
+                    code, shell=True).decode('utf-8')
+                run_timestamps = common_utils.decode_payload(run_timestamps)
+
+                job_ids = list(run_timestamps.keys())
+                run_timestamps = list(run_timestamps.values())
+                remote_log_dirs = [
+                    os.path.join(constants.SKY_LOGS_DIRECTORY, run_timestamp)
+                    for run_timestamp in run_timestamps
+                ]
+                self.log_dir = remote_log_dirs[
+                    0] if remote_log_dirs else self.log_dir
+                self._log_dir = self.log_dir
+                log_path = os.path.join(self.log_dir, 'provision.log')
+                log_abs_path = os.path.abspath(log_path)
+                print(log_abs_path)
+
             status, stdout, stderr, head_ip = self._gang_schedule_ray_up(
                 to_provision.cloud, num_nodes, cluster_config_file, handle,
                 log_abs_path, stream_logs, logging_info, to_provision.use_spot)
@@ -1719,6 +1741,7 @@ class CloudVmRayBackend(backends.Backend):
                                                         wheel_hash)
                     config_dict = provisioner.provision_with_retries(
                         task, to_provision_config, dryrun, stream_logs)
+                    self.log_dir = provisioner._log_dir
                     break
                 except exceptions.ResourcesUnavailableError as e:
                     # Do not remove the stopped cluster from the global state
@@ -2045,6 +2068,7 @@ class CloudVmRayBackend(backends.Backend):
                          target=script_path,
                          up=True,
                          stream_logs=False)
+        print(self.log_dir)
         remote_log_dir = self.log_dir
         remote_log_path = os.path.join(remote_log_dir, 'run.log')
 
@@ -2052,7 +2076,14 @@ class CloudVmRayBackend(backends.Backend):
         cd = f'cd {SKY_REMOTE_WORKDIR}'
 
         ssh_user = ssh_credentials[0]
-        ray_job_id = job_lib.make_ray_job_id(job_id, ssh_user)
+        #ray_job_id = job_lib.make_ray_job_id(job_id, ssh_user)
+        code = job_lib.JobLibCodeGen.get_ray_job_id(ssh_user, job_id)
+        returncode, ray_job_id, stderr = self.run_on_head(handle,
+                                                          code,
+                                                          stream_logs=False,
+                                                          require_outputs=True,
+                                                          separate_stderr=True)
+        ray_job_id = ray_job_id.strip()
         if isinstance(handle.launched_resources.cloud, clouds.Local):
             # Ray Multitenancy is unsupported.
             # (Git Issue) https://github.com/ray-project/ray/issues/6800
@@ -2060,7 +2091,7 @@ class CloudVmRayBackend(backends.Backend):
             # execute it as the specified user.
             executable = onprem_utils.get_python_executable(handle.cluster_name)
             ray_command = (f'{cd} && {executable} -u {script_path} '
-                           f'> {remote_log_path} 2>&1')
+                           f'>> {remote_log_path} 2>&1')
             job_submit_cmd = self._setup_and_create_job_cmd_on_local_head(
                 handle, ray_command, ray_job_id)
         else:
@@ -2069,7 +2100,7 @@ class CloudVmRayBackend(backends.Backend):
                 f'--address=http://127.0.0.1:8265 --job-id {ray_job_id} '
                 '--no-wait -- '
                 f'"{executable} -u {script_path} > {remote_log_path} 2>&1"')
-
+        print(job_submit_cmd)
         returncode, stdout, stderr = self.run_on_head(handle,
                                                       job_submit_cmd,
                                                       stream_logs=False,
@@ -2089,8 +2120,6 @@ class CloudVmRayBackend(backends.Backend):
                 else:
                     # Sky logs. Not using subprocess.run since it will make the
                     # ssh keep connected after ctrl-c.
-                    import pdb
-                    pdb.set_trace()
                     self.tail_logs(handle, job_id)
         finally:
             name = handle.cluster_name
@@ -2139,7 +2168,7 @@ class CloudVmRayBackend(backends.Backend):
             fp.write(ray_command)
             fp.flush()
             run_file = os.path.basename(fp.name)
-            remote_run_file = f'/tmp/{run_file}'
+            remote_run_file = f'/tmp/{run_file}-rsync'
             # We choose to sync code + exec, so that Ray job submission API will
             # work for the multitenant case.
             runner.rsync(source=fp.name,
@@ -2205,8 +2234,32 @@ class CloudVmRayBackend(backends.Backend):
             resources_str = backend_utils.get_task_resources_str(resources_task)
         else:
             resources_str = backend_utils.get_task_resources_str(task)
-        job_id = self._add_job(handle, task.name, resources_str)
 
+        job_id = 0
+        if 'JOB_ID' in os.environ:
+            job_id = int(os.environ['JOB_ID'])
+
+            head_ip = handle.head_ip
+            auth = common_utils.read_yaml(handle.cluster_yaml)['auth']
+            ssh_user = auth['ssh_user']
+            ssh_key = auth['ssh_private_key']
+            ssh_credentials = (ssh_user, ssh_key, 'sky-scale-tester')
+            head_runner = command_runner.SSHCommandRunner(
+                head_ip, *ssh_credentials)
+
+            code = job_lib.JobLibCodeGen.get_job_queue(getpass.getuser(), True)
+            rc, jobs_payload, stderr = head_runner.run(code,
+                                                       require_outputs=True,
+                                                       stream_logs=False)
+
+            jobs_payload = job_lib.load_job_queue(jobs_payload)
+            end_job_id = 0 if len(
+                jobs_payload) == 0 else jobs_payload[0]['job_id']
+            print(end_job_id, job_id)
+            if end_job_id < job_id:
+                job_id = self._add_job(handle, task.name, resources_str)
+        else:
+            job_id = self._add_job(handle, task.name, resources_str)
         is_tpu_vm_pod = tpu_utils.is_tpu_vm_pod(handle.launched_resources)
         # Case: task_lib.Task(run, num_nodes=N) or TPU VM Pods
         if task.num_nodes > 1 or is_tpu_vm_pod:

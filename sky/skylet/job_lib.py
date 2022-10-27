@@ -6,6 +6,7 @@ import enum
 import os
 import pathlib
 import shlex
+import subprocess
 import time
 from typing import Any, Dict, List, Optional
 
@@ -134,8 +135,18 @@ def _create_ray_job_submission_client():
     return job_submission.JobSubmissionClient(address='http://127.0.0.1:8265')
 
 
-def make_ray_job_id(sky_job_id: int, job_owner: str) -> str:
-    return f'{sky_job_id}-{job_owner}'
+def make_ray_job_id(sky_job_id: int, job_owner: str, off_by_one=True) -> str:
+    ray_job_id = f'{sky_job_id}-{job_owner}'
+    num_occurrences = int(
+        subprocess.check_output(
+            f'ray job list --address http://127.0.0.1:8265 | grep -o {ray_job_id} | wc -l',
+            shell=True))
+    if off_by_one:
+        num_occurrences -= 1
+    if num_occurrences:
+        return f'{ray_job_id}-{num_occurrences}'
+    else:
+        return ray_job_id
 
 
 def make_job_command_with_user_switching(username: str,
@@ -278,6 +289,7 @@ def _get_records_from_rows(rows) -> List[Dict[str, Any]]:
 def _get_jobs(username: Optional[str],
               status_list: Optional[List[JobStatus]] = None,
               submitted_gap_sec: int = 0) -> List[Dict[str, Any]]:
+    username = None
     if status_list is None:
         status_list = list(JobStatus)
     status_str_list = [status.value for status in status_list]
@@ -351,7 +363,6 @@ def update_job_status(job_owner: str,
             job_statuses[i] = _RAY_TO_JOB_STATUS_MAP[ray_status]
 
     assert len(job_statuses) == len(job_ids), (job_statuses, job_ids)
-
     statuses = []
     for job_id, status in zip(job_ids, job_statuses):
         # Per-job status lock is required because between the job status
@@ -574,6 +585,14 @@ class JobLibCodeGen:
             f'{run_timestamp!r}, '
             f'{resources_str!r})',
             'print("Job ID: " + str(job_id), flush=True)',
+        ]
+        return cls._build(code)
+
+    @classmethod
+    def get_ray_job_id(cls, job_owner: str, job_id: int):
+        code = [
+            f'ray_job_id = job_lib.make_ray_job_id({job_id!r}, {job_owner!r}, off_by_one = False)',
+            'print(ray_job_id, flush=True)'
         ]
         return cls._build(code)
 

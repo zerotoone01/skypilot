@@ -50,7 +50,7 @@ class BaselinePolicy(Policy):
 # Runs on the admin account of the head node of the on-premise cluster
 # and assigns whether user submitted jobs stay on the on-premise cluster
 # or go to cloud.
-class Controller(object):
+class JobController(object):
 
     def __init__(self, policy='base'):
         assert policy in ['base']
@@ -99,5 +99,5 @@ class Controller(object):
 
 
 if __name__ == '__main__':
-    admin_job_controller = Controller(policy='base')
+    admin_job_controller = JobController(policy='base')
     admin_job_controller.poll_for_jobs()
