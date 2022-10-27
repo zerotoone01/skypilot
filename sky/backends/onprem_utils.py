@@ -561,6 +561,7 @@ def scale_to_cloud(dag, handle):
     ) if task_resources.accelerators else {}
     job_accs = job_accs if job_accs else {}
     job_accs['CPU'] = 0.5
+
     code = textwrap.dedent(f"""\
         import socket
 
@@ -592,8 +593,6 @@ def scale_to_cloud(dag, handle):
     spillover_decision = bool(int(
         spillover_decision.strip())) and task.spillover
 
-    spillover_decision = False
-
     del task_config['resources']['cloud']
     del task_config['resources']['spot_recovery']
 
@@ -609,8 +608,8 @@ def scale_to_cloud(dag, handle):
     jobs_payload = job_lib.load_job_queue(jobs_payload)
     # Get the next job id.
     job_id = 0 if len(jobs_payload) == 0 else jobs_payload[0]['job_id'] + 1
-    job_id = 42
-    cluster_name = f'{handle.cluster_name}-{job_id}'
+    #job_id = 44
+    cluster_name = f'{ssh_user}-{job_id}'
 
     with tempfile.NamedTemporaryFile(prefix=f'sky-autoscale-', mode='w') as fp:
         common_utils.dump_yaml(fp.name, task_config)
@@ -624,7 +623,7 @@ def scale_to_cloud(dag, handle):
         code = [
             'import os',
             'from sky.backends import onprem_utils',
-            f'onprem_utils.run_local_job({job_id!r},{handle.cluster_name!r})',
+            f'onprem_utils.run_local_job({job_id!r},{ssh_user!r})',
         ]
         code = ';'.join(code)
 
@@ -634,7 +633,7 @@ def scale_to_cloud(dag, handle):
         code = [
             'import os',
             'from sky.backends import onprem_utils',
-            f'onprem_utils.run_cloud_job({job_id!r},{handle.cluster_name!r})',
+            f'onprem_utils.run_cloud_job({job_id!r},{ssh_user!r})',
         ]
         code = ';'.join(code)
 
@@ -642,6 +641,19 @@ def scale_to_cloud(dag, handle):
         head_runner.run(python_cmd, stream_logs=True)
 
     backend = backends.CloudVmRayBackend()
+    job_status = backend.get_job_status(handle,
+                                        job_ids=[job_id],
+                                        stream_logs=False)
+    with console.status('Waiting for job logs...'):
+        while list(job_status.values())[0] is None or list(
+                job_status.values())[0] == job_lib.JobStatus.INIT:
+            time.sleep(1)
+            try:
+                job_status = backend.get_job_status(handle,
+                                                    job_ids=[job_id],
+                                                    stream_logs=False)
+            except:
+                pass
     try:
         backend.tail_logs(handle, job_id)
     finally:
@@ -664,8 +676,8 @@ def scale_to_cloud(dag, handle):
     exit(0)
 
 
-def run_local_job(job_id: int, cluster_name: str):
-    file_name = f'{cluster_name}-{job_id}'
+def run_local_job(job_id: int, user: str):
+    file_name = f'{user}-{job_id}'
     file_path = os.path.expanduser(f'~/.sky/remote_jobs/{file_name}.yml')
     run_cmd = f'sky launch -c local -y {file_path}'
     handle = global_user_state.get_handle_from_cluster_name('local')
@@ -680,22 +692,27 @@ def run_local_job(job_id: int, cluster_name: str):
     run_cmd = shlex.split(run_cmd)
     modified_env = os.environ.copy()
     modified_env.update({'JOB_ID': str(job_id)})
-    subprocess.Popen(run_cmd, env=modified_env)  #, stdout=subprocess.PIPE)
+    p = subprocess.Popen(run_cmd,
+                         env=modified_env,
+                         stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
 
 
+# run by admin controller
 def _show_cloud_logs(file_path: str, job_id: int):
     cluster_name = getpass.getuser() + "-" + str(job_id)
-    run_cmd = f'sky launch -c {cluster_name} -y --cloud aws {file_path}'
+    run_cmd = f'sky launch -c {cluster_name} -y --down --cloud aws {file_path}'
     split_cmd = shlex.split(run_cmd)
     modified_env = os.environ.copy()
 
-    print('Migrating job to the cloud.')
+    print('Migrating job to the cloud. This will take some time.')
     subprocess.Popen(split_cmd,
                      env=modified_env,
-                     stdout=subprocess.PIPE,
-                     stderr=subprocess.PIPE)
-    # import pdb
-    # pdb.set_trace()
+                     stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL)
+
     cluster_status, _ = backend_utils.refresh_cluster_status_handle(
         cluster_name)
     while cluster_status is None or cluster_status != global_user_state.ClusterStatus.UP:
@@ -706,16 +723,21 @@ def _show_cloud_logs(file_path: str, job_id: int):
     backend = backends.CloudVmRayBackend()
     handle = global_user_state.get_handle_from_cluster_name(cluster_name)
     job_status = backend.get_job_status(handle, job_ids=[1], stream_logs=False)
-    while list(job_status.keys())[0] == 'null':
-        print(job_status)
+    while list(job_status.values())[0] is None or list(
+            job_status.values())[0] == job_lib.JobStatus.INIT:
         time.sleep(1)
-        job_status = backend.get_job_status(handle, stream_logs=False)
+        try:
+            job_status = backend.get_job_status(handle,
+                                                job_ids=[1],
+                                                stream_logs=False)
+        except:
+            pass
     backend.tail_logs(handle, 1)
 
 
 # run by admin controller
-def run_cloud_job(job_id: int, cluster_name: str):
-    file_name = f'{cluster_name}-{job_id}'
+def run_cloud_job(job_id: int, ssh_user: str):
+    file_name = f'{ssh_user}-{job_id}'
     file_path = os.path.expanduser(f'~/.sky/remote_jobs/{file_name}.yml')
     from sky import task as task_lib
     task = task_lib.Task.from_yaml(file_path)
@@ -756,8 +778,9 @@ def run_cloud_job(job_id: int, cluster_name: str):
     modified_env.update({'JOB_ID': str(job_id)})
     subprocess.Popen(run_cmd,
                      env=modified_env,
-                     stdout=subprocess.PIPE,
-                     stderr=subprocess.PIPE)
+                     stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL)
 
     # from sky import task as task_lib
     # task = task_lib.Task.from_yaml(file_path)

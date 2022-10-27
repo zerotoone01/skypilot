@@ -500,7 +500,9 @@ def load_job_queue(payload: str) -> List[Dict[str, Any]]:
     return jobs
 
 
-def cancel_jobs(job_owner: str, jobs: Optional[List[int]]) -> None:
+def cancel_jobs(job_owner: str,
+                jobs: Optional[List[int]],
+                void_cancel=True) -> None:
     """Cancel the jobs.
 
     Args:
@@ -529,7 +531,8 @@ def cancel_jobs(job_owner: str, jobs: Optional[List[int]]) -> None:
             logger.warning(str(e))
             continue
 
-        if job['status'] in [JobStatus.PENDING, JobStatus.RUNNING]:
+        if job['status'] in [JobStatus.PENDING, JobStatus.RUNNING
+                            ] and not void_cancel:
             set_status(job['job_id'], JobStatus.CANCELLED)
 
 

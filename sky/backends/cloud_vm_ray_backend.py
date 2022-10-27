@@ -2068,7 +2068,7 @@ class CloudVmRayBackend(backends.Backend):
                          target=script_path,
                          up=True,
                          stream_logs=False)
-        print(self.log_dir)
+
         remote_log_dir = self.log_dir
         remote_log_path = os.path.join(remote_log_dir, 'run.log')
 
