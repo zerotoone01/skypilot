@@ -66,7 +66,7 @@ def create_table(cursor, conn):
     conn.commit()
 
 
-_DB = db_utils.SQLiteConn(_DB_PATH, create_table)
+_DB = db_utils.ThreadLocalSQLite(_DB_PATH, create_table)
 
 
 class ClusterStatus(enum.Enum):
@@ -114,65 +114,66 @@ def add_or_update_cluster(cluster_name: str,
     cluster_launched_at = int(time.time()) if is_launch else None
     last_use = common_utils.get_pretty_entry_point() if is_launch else None
     status = ClusterStatus.UP if ready else ClusterStatus.INIT
-    _DB.cursor.execute(
-        'INSERT or REPLACE INTO clusters'
-        '(name, launched_at, handle, last_use, status, autostop, to_down) '
-        'VALUES ('
-        # name
-        '?, '
-        # launched_at
-        'COALESCE('
-        '?, (SELECT launched_at FROM clusters WHERE name=?)), '
-        # handle
-        '?, '
-        # last_use
-        'COALESCE('
-        '?, (SELECT last_use FROM clusters WHERE name=?)), '
-        # status
-        '?, '
-        # autostop
-        # Keep the old autostop value if it exists, otherwise set it to
-        # default -1.
-        'COALESCE('
-        '(SELECT autostop FROM clusters WHERE name=? AND status!=?), -1), '
-        # Keep the old to_down value if it exists, otherwise set it to
-        # default 0.
-        'COALESCE('
-        '(SELECT to_down FROM clusters WHERE name=? AND status!=?), 0)'
-        ')',
-        (
+    with _DB.safe_cursor() as cursor:
+        cursor.execute(
+            'INSERT or REPLACE INTO clusters'
+            '(name, launched_at, handle, last_use, status, autostop, to_down) '
+            'VALUES ('
             # name
-            cluster_name,
+            '?, '
             # launched_at
-            cluster_launched_at,
-            cluster_name,
+            'COALESCE('
+            '?, (SELECT launched_at FROM clusters WHERE name=?)), '
             # handle
-            handle,
+            '?, '
             # last_use
-            last_use,
-            cluster_name,
+            'COALESCE('
+            '?, (SELECT last_use FROM clusters WHERE name=?)), '
             # status
-            status.value,
+            '?, '
             # autostop
-            cluster_name,
-            ClusterStatus.STOPPED.value,
-            cluster_name,
-            ClusterStatus.STOPPED.value,
-        ))
-    _DB.conn.commit()
+            # Keep the old autostop value if it exists, otherwise set it to
+            # default -1.
+            'COALESCE('
+            '(SELECT autostop FROM clusters WHERE name=? AND status!=?), -1), '
+            # Keep the old to_down value if it exists, otherwise set it to
+            # default 0.
+            'COALESCE('
+            '(SELECT to_down FROM clusters WHERE name=? AND status!=?), 0)'
+            ')',
+            (
+                # name
+                cluster_name,
+                # launched_at
+                cluster_launched_at,
+                cluster_name,
+                # handle
+                handle,
+                # last_use
+                last_use,
+                cluster_name,
+                # status
+                status.value,
+                # autostop
+                cluster_name,
+                ClusterStatus.STOPPED.value,
+                cluster_name,
+                ClusterStatus.STOPPED.value,
+            ))
 
 
 def update_last_use(cluster_name: str):
     """Updates the last used command for the cluster."""
-    _DB.cursor.execute('UPDATE clusters SET last_use=(?) WHERE name=(?)',
+    with _DB.safe_cursor() as cursor:
+        cursor.execute('UPDATE clusters SET last_use=(?) WHERE name=(?)',
                        (common_utils.get_pretty_entry_point(), cluster_name))
-    _DB.conn.commit()
 
 
 def remove_cluster(cluster_name: str, terminate: bool):
     """Removes cluster_name mapping."""
     if terminate:
-        _DB.cursor.execute('DELETE FROM clusters WHERE name=(?)',
+        with _DB.safe_cursor() as cursor:
+            cursor.execute('DELETE FROM clusters WHERE name=(?)',
                            (cluster_name,))
     else:
         handle = get_handle_from_cluster_name(cluster_name)
@@ -181,39 +182,41 @@ def remove_cluster(cluster_name: str, terminate: bool):
         # Must invalidate IP list: otherwise 'sky cpunode'
         # on a stopped cpunode will directly try to ssh, which leads to timeout.
         handle.stable_internal_external_ips = None
-        _DB.cursor.execute(
-            'UPDATE clusters SET handle=(?), status=(?) '
-            'WHERE name=(?)', (
-                pickle.dumps(handle),
-                ClusterStatus.STOPPED.value,
-                cluster_name,
-            ))
-    _DB.conn.commit()
+        with _DB.safe_cursor() as cursor:
+            _DB.cursor.execute(
+                'UPDATE clusters SET handle=(?), status=(?) '
+                'WHERE name=(?)', (
+                    pickle.dumps(handle),
+                    ClusterStatus.STOPPED.value,
+                    cluster_name,
+                ))
 
 
 def get_handle_from_cluster_name(
         cluster_name: str) -> Optional['backends.Backend.ResourceHandle']:
     assert cluster_name is not None, 'cluster_name cannot be None'
-    rows = _DB.cursor.execute('SELECT handle FROM clusters WHERE name=(?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT handle FROM clusters WHERE name=(?)',
                               (cluster_name,))
-    for (handle,) in rows:
-        return pickle.loads(handle)
+        for (handle,) in rows:
+            return pickle.loads(handle)
 
 
 def get_glob_cluster_names(cluster_name: str) -> List[str]:
     assert cluster_name is not None, 'cluster_name cannot be None'
-    rows = _DB.cursor.execute('SELECT name FROM clusters WHERE name GLOB (?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT name FROM clusters WHERE name GLOB (?)',
                               (cluster_name,))
-    return [row[0] for row in rows]
+        return [row[0] for row in rows]
 
 
 def set_cluster_status(cluster_name: str, status: ClusterStatus) -> None:
-    _DB.cursor.execute('UPDATE clusters SET status=(?) WHERE name=(?)', (
-        status.value,
-        cluster_name,
-    ))
-    count = _DB.cursor.rowcount
-    _DB.conn.commit()
+    with _DB.safe_cursor() as cursor:
+        count = cursor.execute('UPDATE clusters SET status=(?) WHERE name=(?)',
+                               (
+                                   status.value,
+                                   cluster_name,
+                               ))
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Cluster {cluster_name} not found.')
@@ -221,35 +224,35 @@ def set_cluster_status(cluster_name: str, status: ClusterStatus) -> None:
 
 def set_cluster_autostop_value(cluster_name: str, idle_minutes: int,
                                to_down: bool) -> None:
-    _DB.cursor.execute(
-        'UPDATE clusters SET autostop=(?), to_down=(?) WHERE name=(?)', (
-            idle_minutes,
-            int(to_down),
-            cluster_name,
-        ))
-    count = _DB.cursor.rowcount
-    _DB.conn.commit()
+    with _DB.safe_cursor() as cursor:
+        count = cursor.execute(
+            'UPDATE clusters SET autostop=(?), to_down=(?) WHERE name=(?)', (
+                idle_minutes,
+                int(to_down),
+                cluster_name,
+            ))
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Cluster {cluster_name} not found.')
 
 
 def get_cluster_metadata(cluster_name: str) -> Optional[Dict[str, Any]]:
-    rows = _DB.cursor.execute('SELECT metadata FROM clusters WHERE name=(?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT metadata FROM clusters WHERE name=(?)',
                               (cluster_name,))
-    for (metadata,) in rows:
-        if metadata is None:
-            return None
-        return json.loads(metadata)
+        for (metadata,) in rows:
+            if metadata is None:
+                return None
+            return json.loads(metadata)
 
 
 def set_cluster_metadata(cluster_name: str, metadata: Dict[str, Any]) -> None:
-    _DB.cursor.execute('UPDATE clusters SET metadata=(?) WHERE name=(?)', (
-        json.dumps(metadata),
-        cluster_name,
-    ))
-    count = _DB.cursor.rowcount
-    _DB.conn.commit()
+    with _DB.safe_cursor() as cursor:
+        count = cursor.execute(
+            'UPDATE clusters SET metadata=(?) WHERE name=(?)', (
+                json.dumps(metadata),
+                cluster_name,
+            ))
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Cluster {cluster_name} not found.')
@@ -257,64 +260,71 @@ def set_cluster_metadata(cluster_name: str, metadata: Dict[str, Any]) -> None:
 
 def get_cluster_from_name(
         cluster_name: Optional[str]) -> Optional[Dict[str, Any]]:
-    rows = _DB.cursor.execute('SELECT * FROM clusters WHERE name=(?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT * FROM clusters WHERE name=(?)',
                               (cluster_name,))
-    for (name, launched_at, handle, last_use, status, autostop, metadata,
-         to_down) in rows:
-        record = {
-            'name': name,
-            'launched_at': launched_at,
-            'handle': pickle.loads(handle),
-            'last_use': last_use,
-            'status': ClusterStatus[status],
-            'autostop': autostop,
-            'to_down': bool(to_down),
-            'metadata': json.loads(metadata),
-        }
-        return record
+        for (name, launched_at, handle, last_use, status, autostop, metadata,
+             to_down) in rows:
+            record = {
+                'name': name,
+                'launched_at': launched_at,
+                'handle': pickle.loads(handle),
+                'last_use': last_use,
+                'status': ClusterStatus[status],
+                'autostop': autostop,
+                'to_down': bool(to_down),
+                'metadata': json.loads(metadata),
+            }
+            return record
 
 
 def get_clusters() -> List[Dict[str, Any]]:
-    rows = _DB.cursor.execute(
-        'select * from clusters order by launched_at desc')
-    records = []
-    for (name, launched_at, handle, last_use, status, autostop, metadata,
-         to_down) in rows:
-        # TODO: use namedtuple instead of dict
-        record = {
-            'name': name,
-            'launched_at': launched_at,
-            'handle': pickle.loads(handle),
-            'last_use': last_use,
-            'status': ClusterStatus[status],
-            'autostop': autostop,
-            'to_down': bool(to_down),
-            'metadata': json.loads(metadata),
-        }
-        records.append(record)
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute(
+            'select * from clusters order by launched_at desc')
+
+        # with cursor.execute2(
+        #     'select * from clusters order by launched_at desc') as rows:
+        records = []
+        for (name, launched_at, handle, last_use, status, autostop, metadata,
+             to_down) in rows:
+            # TODO: use namedtuple instead of dict
+            record = {
+                'name': name,
+                'launched_at': launched_at,
+                'handle': pickle.loads(handle),
+                'last_use': last_use,
+                'status': ClusterStatus[status],
+                'autostop': autostop,
+                'to_down': bool(to_down),
+                'metadata': json.loads(metadata),
+            }
+            records.append(record)
     return records
 
 
 def get_cluster_names_start_with(starts_with: str) -> List[str]:
-    rows = _DB.cursor.execute('SELECT name FROM clusters WHERE name LIKE (?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT name FROM clusters WHERE name LIKE (?)',
                               (f'{starts_with}%',))
-    return [row[0] for row in rows]
+        return [row[0] for row in rows]
 
 
 def get_enabled_clouds() -> List[clouds.Cloud]:
-    rows = _DB.cursor.execute('SELECT value FROM config WHERE key = ?',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT value FROM config WHERE key = ?',
                               (_ENABLED_CLOUDS_KEY,))
-    ret = []
-    for (value,) in rows:
-        ret = json.loads(value)
-        break
-    return [clouds.CLOUD_REGISTRY.from_str(cloud) for cloud in ret]
+        ret = []
+        for (value,) in rows:
+            ret = json.loads(value)
+            break
+        return [clouds.CLOUD_REGISTRY.from_str(cloud) for cloud in ret]
 
 
 def set_enabled_clouds(enabled_clouds: List[str]) -> None:
-    _DB.cursor.execute('INSERT OR REPLACE INTO config VALUES (?, ?)',
+    with _DB.safe_cursor() as cursor:
+        cursor.execute('INSERT OR REPLACE INTO config VALUES (?, ?)',
                        (_ENABLED_CLOUDS_KEY, json.dumps(enabled_clouds)))
-    _DB.conn.commit()
 
 
 def add_or_update_storage(storage_name: str,
@@ -330,25 +340,24 @@ def add_or_update_storage(storage_name: str,
     if not status_check(storage_status):
         raise ValueError(f'Error in updating global state. Storage Status '
                          f'{storage_status} is passed in incorrectly')
-    _DB.cursor.execute('INSERT OR REPLACE INTO storage VALUES (?, ?, ?, ?, ?)',
+    with _DB.safe_cursor() as cursor:
+        cursor.execute('INSERT OR REPLACE INTO storage VALUES (?, ?, ?, ?, ?)',
                        (storage_name, storage_launched_at, handle, last_use,
                         storage_status.value))
-    _DB.conn.commit()
 
 
 def remove_storage(storage_name: str):
     """Removes Storage from Database"""
-    _DB.cursor.execute('DELETE FROM storage WHERE name=(?)', (storage_name,))
-    _DB.conn.commit()
+    with _DB.safe_cursor() as cursor:
+        cursor.execute('DELETE FROM storage WHERE name=(?)', (storage_name,))
 
 
 def set_storage_status(storage_name: str, status: StorageStatus) -> None:
-    _DB.cursor.execute('UPDATE storage SET status=(?) WHERE name=(?)', (
-        status.value,
-        storage_name,
-    ))
-    count = _DB.cursor.rowcount
-    _DB.conn.commit()
+    with _DB.safe_cursor() as cursor:
+        count = cursor.execute('UPDATE storage SET status=(?) WHERE name=(?)', (
+            status.value,
+            storage_name,
+        ))
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Storage {storage_name} not found.')
@@ -356,19 +365,19 @@ def set_storage_status(storage_name: str, status: StorageStatus) -> None:
 
 def get_storage_status(storage_name: str) -> None:
     assert storage_name is not None, 'storage_name cannot be None'
-    rows = _DB.cursor.execute('SELECT status FROM storage WHERE name=(?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT status FROM storage WHERE name=(?)',
                               (storage_name,))
-    for (status,) in rows:
-        return StorageStatus[status]
+        for (status,) in rows:
+            return StorageStatus[status]
 
 
 def set_storage_handle(storage_name: str, handle: 'Storage.StorageMetadata'):
-    _DB.cursor.execute('UPDATE storage SET handle=(?) WHERE name=(?)', (
-        pickle.dumps(handle),
-        storage_name,
-    ))
-    count = _DB.cursor.rowcount
-    _DB.conn.commit()
+    with _DB.safe_cursor() as cursor:
+        count = cursor.execute('UPDATE storage SET handle=(?) WHERE name=(?)', (
+            pickle.dumps(handle),
+            storage_name,
+        ))
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Storage{storage_name} not found.')
@@ -376,35 +385,39 @@ def set_storage_handle(storage_name: str, handle: 'Storage.StorageMetadata'):
 
 def get_handle_from_storage_name(storage_name: str):
     assert storage_name is not None, 'storage_name cannot be None'
-    rows = _DB.cursor.execute('SELECT handle FROM storage WHERE name=(?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT handle FROM storage WHERE name=(?)',
                               (storage_name,))
-    for (handle,) in rows:
-        return pickle.loads(handle)
+        for (handle,) in rows:
+            return pickle.loads(handle)
 
 
 def get_glob_storage_name(storage_name: str) -> List[str]:
     assert storage_name is not None, 'storage_name cannot be None'
-    rows = _DB.cursor.execute('SELECT name FROM storage WHERE name GLOB (?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT name FROM storage WHERE name GLOB (?)',
                               (storage_name,))
-    return [row[0] for row in rows]
+        return [row[0] for row in rows]
 
 
 def get_storage_names_start_with(starts_with: str) -> List[str]:
-    rows = _DB.cursor.execute('SELECT name FROM storage WHERE name LIKE (?)',
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT name FROM storage WHERE name LIKE (?)',
                               (f'{starts_with}%',))
-    return [row[0] for row in rows]
+        return [row[0] for row in rows]
 
 
 def get_storage() -> List[Dict[str, Any]]:
-    rows = _DB.cursor.execute('select * from storage')
-    records = []
-    for name, launched_at, handle, last_use, status in rows:
-        # TODO: use namedtuple instead of dict
-        records.append({
-            'name': name,
-            'launched_at': launched_at,
-            'handle': pickle.loads(handle),
-            'last_use': last_use,
-            'status': StorageStatus[status],
-        })
-    return records
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('select * from storage')
+        records = []
+        for name, launched_at, handle, last_use, status in rows:
+            # TODO: use namedtuple instead of dict
+            records.append({
+                'name': name,
+                'launched_at': launched_at,
+                'handle': pickle.loads(handle),
+                'last_use': last_use,
+                'status': StorageStatus[status],
+            })
+        return records

@@ -1,4 +1,5 @@
 """Utils for sky databases."""
+import contextlib
 import threading
 import sqlite3
 from typing import Callable
@@ -39,12 +40,49 @@ def rename_column(
     conn.commit()
 
 
-class SQLiteConn(threading.local):
-    """Thread-local connection to the sqlite3 database."""
+class ThreadLocalSQLite(threading.local):
+    """Thread-local wrapper of a sqlite3 database."""
 
     def __init__(self, db_path: str, create_table: Callable):
         super().__init__()
-        self.db_path = db_path
-        self.conn = sqlite3.connect(db_path)
-        self.cursor = self.conn.cursor()
-        create_table(self.cursor, self.conn)
+        self._db_path = db_path
+
+        # closing() automatically calls close() on exit.
+        with contextlib.closing(sqlite3.connect(db_path)) as connection:
+            with contextlib.closing(connection.cursor()) as cursor:
+                create_table(cursor, connection)
+
+    def safe_cursor(self):
+        """Returns a newly created, auto-commiting, auto-closing cursor.
+
+        This should be used as a context manager:
+
+            # Users need not call close() or commit().
+
+            with safe_cursor() as cursor:
+                rows = cursor.execute('SELECT * from table')
+                # Use rows here, before exiting.
+                for row in rows:
+                    # Do something with 'row'.
+
+            with safe_cursor() as cursor:
+                cursor.execute('INSERT into table ...')
+        """
+
+        class Cursor:
+            """A newly created, auto-commiting, auto-closing cursor."""
+
+            def __init__(self, db_path: str):
+                self._db_path = db_path
+
+            def __enter__(self):
+                self.conn = sqlite3.connect(self._db_path)
+                self.cursor = self.conn.cursor()
+                return self.cursor
+
+            def __exit__(self, type, value, traceback):
+                self.cursor.close()
+                self.conn.commit()
+                self.conn.close()
+
+        return Cursor(self._db_path)

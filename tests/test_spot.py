@@ -38,7 +38,8 @@ class TestReservedClustersOperations:
         db_path = tmp_path / 'state_testing.db'
         monkeypatch.setattr(
             global_user_state, '_DB',
-            db_utils.SQLiteConn(str(db_path), global_user_state.create_table))
+            db_utils.ThreadLocalSQLite(str(db_path),
+                                       global_user_state.create_table))
 
     @pytest.fixture
     def _mock_cluster_state(self, _mock_db_conn):

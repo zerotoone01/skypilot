@@ -66,9 +66,7 @@ def create_table(cursor, conn):
     conn.commit()
 
 
-_DB = db_utils.SQLiteConn(_DB_PATH, create_table)
-_CURSOR = _DB.cursor
-_CONN = _DB.conn
+_DB = db_utils.ThreadLocalSQLite(_DB_PATH, create_table)
 
 
 class JobStatus(enum.Enum):
@@ -169,14 +167,16 @@ def add_job(job_name: str, username: str, run_timestamp: str,
     """Atomically reserve the next available job id for the user."""
     job_submitted_at = time.time()
     # job_id will autoincrement with the null value
-    _CURSOR.execute('INSERT INTO jobs VALUES (null, ?, ?, ?, ?, ?, ?, null, ?)',
-                    (job_name, username, job_submitted_at, JobStatus.INIT.value,
-                     run_timestamp, None, resources_str))
-    _CONN.commit()
-    rows = _CURSOR.execute('SELECT job_id FROM jobs WHERE run_timestamp=(?)',
-                           (run_timestamp,))
-    for row in rows:
-        job_id = row[0]
+    with _DB.safe_cursor() as cursor:
+        cursor.execute(
+            'INSERT INTO jobs VALUES (null, ?, ?, ?, ?, ?, ?, null, ?)',
+            (job_name, username, job_submitted_at, JobStatus.INIT.value,
+             run_timestamp, None, resources_str))
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT job_id FROM jobs WHERE run_timestamp=(?)',
+                              (run_timestamp,))
+        for row in rows:
+            job_id = row[0]
     assert job_id is not None
     return job_id
 
@@ -194,15 +194,16 @@ def _set_status_no_lock(job_id: int, status: JobStatus) -> None:
         check_end_at_str = ' AND end_at IS NULL'
         if status != JobStatus.FAILED_SETUP:
             check_end_at_str = ''
-        _CURSOR.execute(
-            'UPDATE jobs SET status=(?), end_at=(?) '
-            f'WHERE job_id=(?) {check_end_at_str}',
-            (status.value, end_at, job_id))
+        with _DB.safe_cursor() as cursor:
+            cursor.execute(
+                'UPDATE jobs SET status=(?), end_at=(?) '
+                f'WHERE job_id=(?) {check_end_at_str}',
+                (status.value, end_at, job_id))
     else:
-        _CURSOR.execute(
-            'UPDATE jobs SET status=(?), end_at=NULL '
-            'WHERE job_id=(?)', (status.value, job_id))
-    _CONN.commit()
+        with _DB.safe_cursor() as cursor:
+            cursor.execute(
+                'UPDATE jobs SET status=(?), end_at=NULL '
+                'WHERE job_id=(?)', (status.value, job_id))
 
 
 def set_status(job_id: int, status: JobStatus) -> None:
@@ -216,10 +217,11 @@ def set_job_started(job_id: int) -> None:
     # TODO(mraheja): remove pylint disabling when filelock version updated.
     # pylint: disable=abstract-class-instantiated
     with filelock.FileLock(_get_lock_path(job_id)):
-        _CURSOR.execute(
-            'UPDATE jobs SET status=(?), start_at=(?), end_at=NULL '
-            'WHERE job_id=(?)', (JobStatus.RUNNING.value, time.time(), job_id))
-        _CONN.commit()
+        with _DB.safe_cursor() as cursor:
+            cursor.execute(
+                'UPDATE jobs SET status=(?), start_at=(?), end_at=NULL '
+                'WHERE job_id=(?)',
+                (JobStatus.RUNNING.value, time.time(), job_id))
 
 
 def get_status_no_lock(job_id: int) -> JobStatus:
@@ -230,12 +232,13 @@ def get_status_no_lock(job_id: int) -> JobStatus:
     the status in a while loop as in `log_lib._follow_job_logs`. Otherwise, use
     `get_status`.
     """
-    rows = _CURSOR.execute('SELECT status FROM jobs WHERE job_id=(?)',
-                           (job_id,))
-    for (status,) in rows:
-        if status is None:
-            return None
-        return JobStatus(status)
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute('SELECT status FROM jobs WHERE job_id=(?)',
+                              (job_id,))
+        for (status,) in rows:
+            if status is None:
+                return None
+            return JobStatus(status)
 
 
 def get_status(job_id: int) -> Optional[JobStatus]:
@@ -249,12 +252,13 @@ def get_statuses_payload(job_ids: List[Optional[int]]) -> str:
     # Per-job lock is not required here, since the staled job status will not
     # affect the caller.
     query_str = ','.join(['?'] * len(job_ids))
-    rows = _CURSOR.execute(
-        f'SELECT job_id, status FROM jobs WHERE job_id IN ({query_str})',
-        job_ids)
-    statuses = {job_id: None for job_id in job_ids}
-    for (job_id, status) in rows:
-        statuses[job_id] = status
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute(
+            f'SELECT job_id, status FROM jobs WHERE job_id IN ({query_str})',
+            job_ids)
+        statuses = {job_id: None for job_id in job_ids}
+        for (job_id, status) in rows:
+            statuses[job_id] = status
     return common_utils.encode_payload(statuses)
 
 
@@ -267,18 +271,20 @@ def load_statuses_payload(statuses_payload: str) -> Dict[int, JobStatus]:
 
 
 def get_latest_job_id() -> Optional[int]:
-    rows = _CURSOR.execute(
-        'SELECT job_id FROM jobs ORDER BY job_id DESC LIMIT 1')
-    for (job_id,) in rows:
-        return job_id
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute(
+            'SELECT job_id FROM jobs ORDER BY job_id DESC LIMIT 1')
+        for (job_id,) in rows:
+            return job_id
 
 
 def get_job_time_payload(job_id: int, is_end: bool) -> Optional[int]:
     field = 'end_at' if is_end else 'start_at'
-    rows = _CURSOR.execute(f'SELECT {field} FROM jobs WHERE job_id=(?)',
-                           (job_id,))
-    for (timestamp,) in rows:
-        return common_utils.encode_payload(timestamp)
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute(f'SELECT {field} FROM jobs WHERE job_id=(?)',
+                              (job_id,))
+        for (timestamp,) in rows:
+            return common_utils.encode_payload(timestamp)
 
 
 def _get_records_from_rows(rows) -> List[Dict[str, Any]]:
@@ -307,38 +313,40 @@ def _get_jobs(username: Optional[str],
     if status_list is None:
         status_list = list(JobStatus)
     status_str_list = [status.value for status in status_list]
-    if username is None:
-        rows = _CURSOR.execute(
-            f"""\
-            SELECT * FROM jobs
-            WHERE status IN ({','.join(['?'] * len(status_list))})
-            AND submitted_at <= (?)
-            ORDER BY job_id DESC""",
-            (*status_str_list, time.time() - submitted_gap_sec),
-        )
-    else:
-        rows = _CURSOR.execute(
-            f"""\
-            SELECT * FROM jobs
-            WHERE status IN ({','.join(['?'] * len(status_list))})
-            AND username=(?) AND submitted_at <= (?)
-            ORDER BY job_id DESC""",
-            (*status_str_list, username, time.time() - submitted_gap_sec),
-        )
+    with _DB.safe_cursor() as cursor:
+        if username is None:
+            rows = cursor.execute(
+                f"""\
+                SELECT * FROM jobs
+                WHERE status IN ({','.join(['?'] * len(status_list))})
+                AND submitted_at <= (?)
+                ORDER BY job_id DESC""",
+                (*status_str_list, time.time() - submitted_gap_sec),
+            )
+        else:
+            rows = cursor.execute(
+                f"""\
+                SELECT * FROM jobs
+                WHERE status IN ({','.join(['?'] * len(status_list))})
+                AND username=(?) AND submitted_at <= (?)
+                ORDER BY job_id DESC""",
+                (*status_str_list, username, time.time() - submitted_gap_sec),
+            )
 
-    records = _get_records_from_rows(rows)
+        records = _get_records_from_rows(rows)
     return records
 
 
 def _get_jobs_by_ids(job_ids: List[int]) -> List[Dict[str, Any]]:
-    rows = _CURSOR.execute(
-        f"""\
-        SELECT * FROM jobs
-        WHERE job_id IN ({','.join(['?'] * len(job_ids))})
-        ORDER BY job_id DESC""",
-        (*job_ids,),
-    )
-    records = _get_records_from_rows(rows)
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute(
+            f"""\
+            SELECT * FROM jobs
+            WHERE job_id IN ({','.join(['?'] * len(job_ids))})
+            ORDER BY job_id DESC""",
+            (*job_ids,),
+        )
+        records = _get_records_from_rows(rows)
     return records
 
 
@@ -430,12 +438,12 @@ def fail_all_jobs_in_progress() -> None:
     in_progress_status = [
         status.value for status in JobStatus.nonterminal_statuses()
     ]
-    _CURSOR.execute(
-        f"""\
-        UPDATE jobs SET status=(?)
-        WHERE status IN ({','.join(['?'] * len(in_progress_status))})
-        """, (JobStatus.FAILED.value, *in_progress_status))
-    _CONN.commit()
+    with _DB.safe_cursor() as cursor:
+        cursor.execute(
+            f"""\
+            UPDATE jobs SET status=(?)
+            WHERE status IN ({','.join(['?'] * len(in_progress_status))})
+            """, (JobStatus.FAILED.value, *in_progress_status))
 
 
 def update_status(job_owner: str, submitted_gap_sec: int = 0) -> None:
@@ -458,13 +466,14 @@ def is_cluster_idle() -> bool:
     in_progress_status = [
         status.value for status in JobStatus.nonterminal_statuses()
     ]
-    rows = _CURSOR.execute(
-        f"""\
-        SELECT COUNT(*) FROM jobs
-        WHERE status IN ({','.join(['?'] * len(in_progress_status))})
-        """, in_progress_status)
-    for (count,) in rows:
-        return count == 0
+    with _DB.safe_cursor() as cursor:
+        rows = cursor.execute(
+            f"""\
+            SELECT COUNT(*) FROM jobs
+            WHERE status IN ({','.join(['?'] * len(in_progress_status))})
+            """, in_progress_status)
+        for (count,) in rows:
+            return count == 0
 
 
 def format_job_queue(jobs: List[Dict[str, Any]]):
@@ -563,14 +572,15 @@ def cancel_jobs(job_owner: str, jobs: Optional[List[int]]) -> None:
 
 def get_run_timestamp(job_id: Optional[int]) -> Optional[str]:
     """Returns the relative path to the log file for a job."""
-    _CURSOR.execute(
-        """\
-            SELECT * FROM jobs
-            WHERE job_id=(?)""", (job_id,))
-    row = _CURSOR.fetchone()
-    if row is None:
-        return None
-    run_timestamp = row[JobInfoLoc.RUN_TIMESTAMP.value]
+    with _DB.safe_cursor() as cursor:
+        cursor.execute(
+            """\
+                SELECT * FROM jobs
+                WHERE job_id=(?)""", (job_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        run_timestamp = row[JobInfoLoc.RUN_TIMESTAMP.value]
     return run_timestamp
 
 
@@ -578,16 +588,17 @@ def run_timestamp_with_globbing_payload(
         job_ids: List[Optional[str]]) -> Dict[str, str]:
     """Returns the relative paths to the log files for job with globbing."""
     query_str = ' OR '.join(['job_id GLOB (?)'] * len(job_ids))
-    _CURSOR.execute(
-        f"""\
-            SELECT * FROM jobs
-            WHERE {query_str}""", job_ids)
-    rows = _CURSOR.fetchall()
-    run_timestamps = dict()
-    for row in rows:
-        job_id = row[JobInfoLoc.JOB_ID.value]
-        run_timestamp = row[JobInfoLoc.RUN_TIMESTAMP.value]
-        run_timestamps[str(job_id)] = run_timestamp
+    with _DB.safe_cursor() as cursor:
+        cursor.execute(
+            f"""\
+                SELECT * FROM jobs
+                WHERE {query_str}""", job_ids)
+        rows = cursor.fetchall()
+        run_timestamps = dict()
+        for row in rows:
+            job_id = row[JobInfoLoc.JOB_ID.value]
+            run_timestamp = row[JobInfoLoc.RUN_TIMESTAMP.value]
+            run_timestamps[str(job_id)] = run_timestamp
     return common_utils.encode_payload(run_timestamps)
 
 
