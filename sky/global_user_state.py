@@ -212,11 +212,11 @@ def get_glob_cluster_names(cluster_name: str) -> List[str]:
 
 def set_cluster_status(cluster_name: str, status: ClusterStatus) -> None:
     with _DB.safe_cursor() as cursor:
-        count = cursor.execute('UPDATE clusters SET status=(?) WHERE name=(?)',
-                               (
-                                   status.value,
-                                   cluster_name,
-                               ))
+        cursor.execute('UPDATE clusters SET status=(?) WHERE name=(?)', (
+            status.value,
+            cluster_name,
+        ))
+        count = cursor.rowcount
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Cluster {cluster_name} not found.')
@@ -225,12 +225,13 @@ def set_cluster_status(cluster_name: str, status: ClusterStatus) -> None:
 def set_cluster_autostop_value(cluster_name: str, idle_minutes: int,
                                to_down: bool) -> None:
     with _DB.safe_cursor() as cursor:
-        count = cursor.execute(
+        cursor.execute(
             'UPDATE clusters SET autostop=(?), to_down=(?) WHERE name=(?)', (
                 idle_minutes,
                 int(to_down),
                 cluster_name,
             ))
+        count = cursor.rowcount
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Cluster {cluster_name} not found.')
@@ -248,11 +249,11 @@ def get_cluster_metadata(cluster_name: str) -> Optional[Dict[str, Any]]:
 
 def set_cluster_metadata(cluster_name: str, metadata: Dict[str, Any]) -> None:
     with _DB.safe_cursor() as cursor:
-        count = cursor.execute(
-            'UPDATE clusters SET metadata=(?) WHERE name=(?)', (
-                json.dumps(metadata),
-                cluster_name,
-            ))
+        cursor.execute('UPDATE clusters SET metadata=(?) WHERE name=(?)', (
+            json.dumps(metadata),
+            cluster_name,
+        ))
+        count = cursor.rowcount
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Cluster {cluster_name} not found.')
@@ -354,10 +355,11 @@ def remove_storage(storage_name: str):
 
 def set_storage_status(storage_name: str, status: StorageStatus) -> None:
     with _DB.safe_cursor() as cursor:
-        count = cursor.execute('UPDATE storage SET status=(?) WHERE name=(?)', (
+        cursor.execute('UPDATE storage SET status=(?) WHERE name=(?)', (
             status.value,
             storage_name,
         ))
+        count = cursor.rowcount
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Storage {storage_name} not found.')
@@ -374,10 +376,11 @@ def get_storage_status(storage_name: str) -> None:
 
 def set_storage_handle(storage_name: str, handle: 'Storage.StorageMetadata'):
     with _DB.safe_cursor() as cursor:
-        count = cursor.execute('UPDATE storage SET handle=(?) WHERE name=(?)', (
+        cursor.execute('UPDATE storage SET handle=(?) WHERE name=(?)', (
             pickle.dumps(handle),
             storage_name,
         ))
+        count = cursor.rowcount
     assert count <= 1, count
     if count == 0:
         raise ValueError(f'Storage{storage_name} not found.')

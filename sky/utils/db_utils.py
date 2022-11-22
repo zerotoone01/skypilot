@@ -80,7 +80,7 @@ class ThreadLocalSQLite(threading.local):
                 self.cursor = self.conn.cursor()
                 return self.cursor
 
-            def __exit__(self, type, value, traceback):
+            def __exit__(self, type, value, traceback): # pylint: disable=redefined-builtin
                 self.cursor.close()
                 self.conn.commit()
                 self.conn.close()
