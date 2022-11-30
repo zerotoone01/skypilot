@@ -290,7 +290,7 @@ class Task:
                                          f'{dst_path}:{src}')
             task.set_file_mounts(copy_mounts)
 
-        task_storage_mounts = {}  # type: Dict[str, Storage]
+        task_storage_mounts = {}  # type: Dict[str, storage_lib.Storage]
         all_storages = fm_storages
         for storage in all_storages:
             mount_path = storage[0]
@@ -333,13 +333,23 @@ class Task:
     @property
     def num_nodes(self) -> int:
         return self._num_nodes
+    
+    @num_nodes.setter
+    def num_nodes(self, num_nodes: Optional[int]) -> None:
+        if num_nodes is None:
+            num_nodes = 1
+        if not isinstance(num_nodes, int) or num_nodes <= 0:
+            with ux_utils.print_exception_no_traceback():
+                raise ValueError(
+                    f'num_nodes should be a positive int. Got: {num_nodes}')
+        self._num_nodes = num_nodes
 
     @property
     def envs(self) -> Dict[str, str]:
         return self._envs
 
     def set_envs(
-            self, envs: Union[None, Tuple[Tuple[str, str]],
+            self, envs: Union[None, List[Tuple[str, str]],
                               Dict[str, str]]) -> 'Task':
         """Sets the environment variables for use inside the setup/run commands.
 
@@ -382,15 +392,6 @@ class Task:
     def need_spot_recovery(self) -> bool:
         return any(r.spot_recovery is not None for r in self.resources)
 
-    @num_nodes.setter
-    def num_nodes(self, num_nodes: Optional[int]) -> None:
-        if num_nodes is None:
-            num_nodes = 1
-        if not isinstance(num_nodes, int) or num_nodes <= 0:
-            with ux_utils.print_exception_no_traceback():
-                raise ValueError(
-                    f'num_nodes should be a positive int. Got: {num_nodes}')
-        self._num_nodes = num_nodes
 
     def set_inputs(self, inputs, estimated_size_gigabytes) -> 'Task':
         # E.g., 's3://bucket', 'gs://bucket', or None.

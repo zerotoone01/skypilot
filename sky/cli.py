@@ -37,7 +37,7 @@ import subprocess
 import sys
 import textwrap
 import typing
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import click
 import colorama
@@ -293,7 +293,7 @@ def _parse_env_var(env_var: str) -> Tuple[str, str]:
             raise click.UsageError(
                 f'{env_var} is not set in local environment.')
         return (env_var, value)
-    return tuple(env_var.split('=', 1))
+    return tuple(env_var.split('=', 1)) # type: ignore
 
 
 _TASK_OPTIONS = [
@@ -410,8 +410,9 @@ def _complete_storage_name(ctx: click.Context, param: click.Parameter,
     return global_user_state.get_storage_names_start_with(incomplete)
 
 
-def _complete_file_name(ctx: click.Context, param: click.Parameter,
-                        incomplete: str) -> List[str]:
+def _complete_file_name(
+        ctx: click.Context, param: click.Parameter,
+        incomplete: str) -> List[click.shell_completion.CompletionItem]:
     """Handle shell completion for file names.
 
     Returns a special completion marker that tells click to use
@@ -542,7 +543,8 @@ def _uninstall_shell_completion(ctx: click.Context, param: click.Parameter,
     ctx.exit()
 
 
-def _add_click_options(options: List[click.Option]):
+def _add_click_options(options: List[Callable[['click.decorators.FC'],
+                                              'click.decorators.FC']]):
     """A decorator for adding a list of click option decorators."""
 
     def _add_options(func):
@@ -562,7 +564,7 @@ def _parse_override_params(cloud: Optional[str] = None,
                            image_id: Optional[str] = None,
                            disk_size: Optional[int] = None) -> Dict[str, Any]:
     """Parses the override parameters into a dictionary."""
-    override_params = {}
+    override_params: Dict[str, Any] = {}
     if cloud is not None:
         if cloud.lower() == 'none':
             override_params['cloud'] = None
@@ -609,7 +611,7 @@ def _default_interactive_node_name(node_type: str):
     return f'sky-{node_type}-{getpass.getuser()}'
 
 
-def _infer_interactive_node_type(resources: sky.Resources):
+def _infer_interactive_node_type(resources: sky.Resources) -> str:
     """Determine interactive node type from resources."""
     accelerators = resources.accelerators
     cloud = resources.cloud
@@ -643,6 +645,10 @@ def _check_resources_match(backend: backends.Backend,
         return
 
     if node_type is not None:
+        if not isinstance(handle, backends.CloudVmRayBackend.ResourceHandle):
+            raise click.UsageError(
+                'Cannot use a non-cloud VM for interactive usage.')
+
         inferred_node_type = _infer_interactive_node_type(
             handle.launched_resources)
         if node_type != inferred_node_type:
@@ -661,7 +667,7 @@ def _check_resources_match(backend: backends.Backend,
 def _launch_with_confirm(
     task: sky.Task,
     backend: backends.Backend,
-    cluster: str,
+    cluster: Optional[str],
     *,
     dryrun: bool,
     detach_run: bool,
@@ -748,7 +754,6 @@ def _create_and_ssh_into_node(
     node_type: str,
     resources: sky.Resources,
     cluster_name: str,
-    backend: Optional['backend_lib.Backend'] = None,
     port_forward: Optional[List[int]] = None,
     session_manager: Optional[str] = None,
     user_requested_resources: Optional[bool] = False,
@@ -797,7 +802,7 @@ def _create_and_ssh_into_node(
     )
     task.set_resources(resources)
 
-    backend = backend if backend is not None else backends.CloudVmRayBackend()
+    backend = backends.CloudVmRayBackend()
     maybe_status, _ = backend_utils.refresh_cluster_status_handle(cluster_name)
     if maybe_status is not None and user_requested_resources:
         name_arg = ''
@@ -822,6 +827,7 @@ def _create_and_ssh_into_node(
         node_type=node_type,
     )
     handle = global_user_state.get_handle_from_cluster_name(cluster_name)
+    assert isinstance(handle, backends.CloudVmRayBackend.ResourceHandle), (handle, cluster_name)
 
     # Use ssh rather than 'ray attach' to suppress ray messages, speed up
     # connection, and for allowing adding 'cd workdir' in the future.
@@ -853,7 +859,7 @@ def _create_and_ssh_into_node(
     click.secho(f'rsync -rP {cluster_name}:/remote/path /local/path', bold=True)
 
 
-def _check_yaml(entrypoint: str) -> Tuple[bool, dict]:
+def _check_yaml(entrypoint: str) -> Tuple[bool, Optional[Dict[str, str]]]:
     """Checks if entrypoint is a readable YAML file.
 
     Args:
@@ -914,20 +920,19 @@ def _make_task_from_entrypoint_with_overrides(
     use_spot: Optional[bool] = None,
     image_id: Optional[str] = None,
     disk_size: Optional[int] = None,
-    env: List[Dict[str, str]] = None,
+    env: Optional[List[Tuple[str, str]]] = None,
     # spot launch specific
     spot_recovery: Optional[str] = None,
 ) -> sky.Task:
     entrypoint = ' '.join(entrypoint)
     is_yaml, yaml_config = _check_yaml(entrypoint)
+    entrypoint: Optional[str]
     if is_yaml:
         # Treat entrypoint as a yaml.
         click.secho('Task from YAML spec: ', fg='yellow', nl=False)
         click.secho(entrypoint, bold=True)
     else:
-        if not entrypoint:
-            entrypoint = None
-        else:
+        if entrypoint:
             # Treat entrypoint as a bash command.
             click.secho('Task from command: ', fg='yellow', nl=False)
             click.secho(entrypoint, bold=True)
@@ -936,9 +941,12 @@ def _make_task_from_entrypoint_with_overrides(
         cloud = 'local'
 
     if is_yaml:
+        assert entrypoint is not None
         usage_lib.messages.usage.update_user_task_yaml(entrypoint)
         task = sky.Task.from_yaml(entrypoint)
     else:
+        if not entrypoint:
+            entrypoint = None
         task = sky.Task(name='sky-cmd', run=entrypoint)
         task.set_resources({sky.Resources()})
 
@@ -1143,7 +1151,7 @@ def cli():
               help='Skip setup phase when (re-)launching cluster.')
 @usage_lib.entrypoint
 def launch(
-    entrypoint: str,
+    entrypoint: List[str],
     cluster: Optional[str],
     dryrun: bool,
     detach_setup: bool,
@@ -1159,7 +1167,7 @@ def launch(
     num_nodes: Optional[int],
     use_spot: Optional[bool],
     image_id: Optional[str],
-    env: List[Dict[str, str]],
+    env: List[Tuple[str, str]],
     disk_size: Optional[int],
     idle_minutes_to_autostop: Optional[int],
     down: bool,  # pylint: disable=redefined-outer-name
@@ -1198,6 +1206,7 @@ def launch(
         disk_size=disk_size,
     )
 
+    backend: backends.Backend
     if backend_name == backends.LocalDockerBackend.NAME:
         backend = backends.LocalDockerBackend()
     elif backend_name == backends.CloudVmRayBackend.NAME:
@@ -1255,7 +1264,7 @@ def exec(
     num_nodes: Optional[int],
     use_spot: Optional[bool],
     image_id: Optional[str],
-    env: List[Dict[str, str]],
+    env: List[Tuple[str, str]],
 ):
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
     """Execute a task or a command on a cluster (skip setup).
@@ -2055,7 +2064,7 @@ def _hint_for_down_spot_controller(controller_name: str):
 
 
 def _down_or_stop_clusters(
-        names: Tuple[str],
+        names: List[str],
         apply_to_all: Optional[bool],
         down: bool,  # pylint: disable=redefined-outer-name
         no_confirm: bool,
@@ -2829,7 +2838,7 @@ def spot_launch(
     use_spot: Optional[bool],
     image_id: Optional[str],
     spot_recovery: Optional[str],
-    env: List[Dict[str, str]],
+    env: List[Tuple[str, str]],
     disk_size: Optional[int],
     detach_run: bool,
     retry_until_up: bool,
@@ -3141,7 +3150,7 @@ def benchmark_launch(
     num_nodes: Optional[int],
     use_spot: Optional[bool],
     image_id: Optional[str],
-    env: List[Dict[str, str]],
+    env: List[Tuple[str, str]],
     disk_size: Optional[int],
     idle_minutes_to_autostop: Optional[int],
     yes: bool,
@@ -3607,8 +3616,9 @@ def benchmark_delete(benchmarks: Tuple[str], all: Optional[bool],
                        'before deleting the benchmark report.')
             success = False
         else:
-            bucket_name = benchmark_state.get_benchmark_from_name(
-                benchmark)['bucket']
+            record = benchmark_state.get_benchmark_from_name(benchmark)
+            assert record is not None, 'Benchmark record should exist.'
+            bucket_name = record['bucket']
             handle = global_user_state.get_handle_from_storage_name(bucket_name)
             bucket_type = list(handle.sky_stores.keys())[0]
             benchmark_utils.remove_benchmark_logs(benchmark, bucket_name,

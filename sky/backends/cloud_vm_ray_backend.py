@@ -1571,10 +1571,9 @@ class CloudVmRayBackend(backends.Backend):
                      *,
                      cluster_name: str,
                      cluster_yaml: str,
+                     launched_nodes: int,
+                     launched_resources: resources_lib.Resources,
                      head_ip: Optional[str] = None,
-                     launched_nodes: Optional[int] = None,
-                     launched_resources: Optional[
-                         resources_lib.Resources] = None,
                      tpu_create_script: Optional[str] = None,
                      tpu_delete_script: Optional[str] = None) -> None:
             self._version = self._VERSION

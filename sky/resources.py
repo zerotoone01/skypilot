@@ -57,7 +57,7 @@ class Resources:
         disk_size: Optional[int] = None,
         region: Optional[str] = None,
         zone: Optional[str] = None,
-        image_id: Union[Dict[str, str], str, None] = None,
+        image_id: Union[Dict[Optional[str], str], str, None] = None,
     ):
         self._version = self._VERSION
         self._cloud = cloud
