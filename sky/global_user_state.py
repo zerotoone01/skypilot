@@ -183,7 +183,7 @@ def remove_cluster(cluster_name: str, terminate: bool):
         # on a stopped cpunode will directly try to ssh, which leads to timeout.
         handle.stable_internal_external_ips = None
         with _DB.safe_cursor() as cursor:
-            _DB.cursor.execute(
+            cursor.execute(
                 'UPDATE clusters SET handle=(?), status=(?) '
                 'WHERE name=(?)', (
                     pickle.dumps(handle),
