@@ -2400,7 +2400,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
             f'--no-wait -- {switch_user_cmd}')
         return job_submit_cmd
 
-    def _add_job(self, handle: ResourceHandle, job_name: str,
+    def _add_job(self, handle: ResourceHandle, job_name: Optional[str],
                  resources_str: str) -> int:
         username = getpass.getuser()
         code = job_lib.JobLibCodeGen.add_job(job_name, username,

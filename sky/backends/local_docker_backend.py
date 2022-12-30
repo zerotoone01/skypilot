@@ -122,7 +122,7 @@ class LocalDockerBackend(backends.Backend['LocalDockerBackend.ResourceHandle']):
     # --- Implementation of Backend APIs ---
 
     def check_resources_fit_cluster(self,
-                                    handle: LocalDockerBackend.ResourceHandle,
+                                    handle: 'LocalDockerBackend.ResourceHandle',
                                     task: 'task_lib.Task') -> None:
         pass
 

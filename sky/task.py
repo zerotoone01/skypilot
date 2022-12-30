@@ -3,7 +3,7 @@ import inspect
 import os
 import re
 import typing
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Sequence, Tuple, Union
 
 import yaml
 
@@ -139,13 +139,15 @@ class Task:
         """
         self.name = name
         self.run = run
-        self.storage_mounts = {}
-        self.storage_plans = {}
+        self.storage_mounts: Dict[str, storage_lib.Storage] = {}
+        self.storage_plans: Dict[storage_lib.Storage,
+                                 storage_lib.StoreType] = {}
         self.setup = setup
         self._envs = envs or {}
         self.workdir = workdir
         self.docker_image = (docker_image if docker_image else
                              'gpuci/miniforge-cuda:11.4-devel-ubuntu18.04')
+        self._num_nodes: int
         self.num_nodes = num_nodes
 
         self.inputs = None
@@ -333,12 +335,22 @@ class Task:
     def num_nodes(self) -> int:
         return self._num_nodes
 
+    @num_nodes.setter
+    def num_nodes(self, num_nodes: Optional[int]) -> None:
+        if num_nodes is None:
+            num_nodes = 1
+        if not isinstance(num_nodes, int) or num_nodes <= 0:
+            with ux_utils.print_exception_no_traceback():
+                raise ValueError(
+                    f'num_nodes should be a positive int. Got: {num_nodes}')
+        self._num_nodes = num_nodes
+
     @property
     def envs(self) -> Dict[str, str]:
         return self._envs
 
     def set_envs(
-            self, envs: Union[None, Tuple[Tuple[str, str]],
+            self, envs: Union[None, Sequence[Tuple[str, str]],
                               Dict[str, str]]) -> 'Task':
         """Sets the environment variables for use inside the setup/run commands.
 
@@ -380,16 +392,6 @@ class Task:
     @property
     def need_spot_recovery(self) -> bool:
         return any(r.spot_recovery is not None for r in self.resources)
-
-    @num_nodes.setter
-    def num_nodes(self, num_nodes: Optional[int]) -> None:
-        if num_nodes is None:
-            num_nodes = 1
-        if not isinstance(num_nodes, int) or num_nodes <= 0:
-            with ux_utils.print_exception_no_traceback():
-                raise ValueError(
-                    f'num_nodes should be a positive int. Got: {num_nodes}')
-        self._num_nodes = num_nodes
 
     def set_inputs(self, inputs, estimated_size_gigabytes) -> 'Task':
         # E.g., 's3://bucket', 'gs://bucket', or None.
