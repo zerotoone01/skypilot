@@ -37,7 +37,7 @@ SKY_DOCKER_WORKDIR = 'sky_workdir'
 
 def create_dockerfile(
     base_image: str,
-    setup_command: str,
+    setup_command: Optional[str],
     copy_path: str,
     build_dir: str,
     run_command: Optional[str] = None,

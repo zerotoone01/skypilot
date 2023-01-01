@@ -344,6 +344,10 @@ class LocalDockerBackend(backends.Backend['LocalDockerBackend.ResourceHandle']):
 
     def _execute_task_one_node(self, handle: ResourceHandle,
                                task: 'task_lib.Task') -> None:
+        if callable(task.run):
+            raise NotImplementedError(
+                'Tasks with callable run commands are not supported in '
+                'LocalDockerBackend.')
         container = self.containers[handle]
         _, image_metadata = self.images[handle]
         with tempfile.NamedTemporaryFile(mode='w') as temp_file:
