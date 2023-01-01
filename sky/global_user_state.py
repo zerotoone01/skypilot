@@ -209,16 +209,17 @@ def remove_cluster(cluster_name: str, terminate: bool):
         handle = get_handle_from_cluster_name(cluster_name)
         if handle is None:
             return
-        # Must invalidate IP list: otherwise 'sky cpunode'
-        # on a stopped cpunode will directly try to ssh, which leads to timeout.
-        handle.stable_internal_external_ips = None
-        _DB.cursor.execute(
-            'UPDATE clusters SET handle=(?), status=(?) '
-            'WHERE name=(?)', (
-                pickle.dumps(handle),
-                ClusterStatus.STOPPED.value,
-                cluster_name,
-            ))
+        if hasattr(handle, 'stable_internal_external_ips'):
+            # Must invalidate IP list: otherwise 'sky cpunode'
+            # on a stopped cpunode will directly try to ssh, which leads to timeout.
+            handle.stable_internal_external_ips = None
+            _DB.cursor.execute(
+                'UPDATE clusters SET handle=(?), status=(?) '
+                'WHERE name=(?)', (
+                    pickle.dumps(handle),
+                    ClusterStatus.STOPPED.value,
+                    cluster_name,
+                ))
     _DB.conn.commit()
 
 
@@ -229,6 +230,7 @@ def get_handle_from_cluster_name(
                               (cluster_name,))
     for (handle,) in rows:
         return pickle.loads(handle)
+    return None
 
 
 def get_glob_cluster_names(cluster_name: str) -> List[str]:
@@ -272,6 +274,7 @@ def get_cluster_metadata(cluster_name: str) -> Optional[Dict[str, Any]]:
         if metadata is None:
             return None
         return json.loads(metadata)
+    return None
 
 
 def set_cluster_metadata(cluster_name: str, metadata: Dict[str, Any]) -> None:

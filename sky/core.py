@@ -245,25 +245,25 @@ def stop(cluster_name: str, purge: bool = False) -> None:
     handle = global_user_state.get_handle_from_cluster_name(cluster_name)
     if handle is None:
         raise ValueError(f'Cluster {cluster_name!r} does not exist.')
-    if tpu_utils.is_tpu_vm_pod(handle.launched_resources):
-        # Reference:
-        # https://cloud.google.com/tpu/docs/managing-tpus-tpu-vm#stopping_a_with_gcloud  # pylint: disable=line-too-long
-        raise exceptions.NotSupportedError(
-            f'Stopping cluster {cluster_name!r} with TPU VM Pod '
-            'is not supported.')
-
     backend = backend_utils.get_backend_from_handle(handle)
-    if (isinstance(backend, backends.CloudVmRayBackend) and
-            handle.launched_resources.use_spot):
-        # Disable spot instances to be stopped.
-        # TODO(suquark): enable GCP+spot to be stopped in the future.
-        raise exceptions.NotSupportedError(
-            f'{colorama.Fore.YELLOW}Stopping cluster '
-            f'{cluster_name!r}... skipped.{colorama.Style.RESET_ALL}\n'
-            '  Stopping spot instances is not supported as the attached '
-            'disks will be lost.\n'
-            '  To terminate the cluster instead, run: '
-            f'{colorama.Style.BRIGHT}sky down {cluster_name}')
+
+    if isinstance(backend, backends.CloudVmRayBackend):
+        if tpu_utils.is_tpu_vm_pod(handle.launched_resources):
+            # Reference:
+            # https://cloud.google.com/tpu/docs/managing-tpus-tpu-vm#stopping_a_with_gcloud  # pylint: disable=line-too-long
+            raise exceptions.NotSupportedError(
+                f'Stopping cluster {cluster_name!r} with TPU VM Pod '
+                'is not supported.')
+        if handle.launched_resources.use_spot:
+            # Disable spot instances to be stopped.
+            # TODO(suquark): enable GCP+spot to be stopped in the future.
+            raise exceptions.NotSupportedError(
+                f'{colorama.Fore.YELLOW}Stopping cluster '
+                f'{cluster_name!r}... skipped.{colorama.Style.RESET_ALL}\n'
+                '  Stopping spot instances is not supported as the attached '
+                'disks will be lost.\n'
+                '  To terminate the cluster instead, run: '
+                f'{colorama.Style.BRIGHT}sky down {cluster_name}')
     usage_lib.record_cluster_name_for_current_operation(cluster_name)
     backend.teardown(handle, terminate=False, purge=purge)
 

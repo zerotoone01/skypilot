@@ -369,6 +369,10 @@ def dump_spot_job_queue() -> str:
                                                   job['job_id'])
         handle = global_user_state.get_handle_from_cluster_name(cluster_name)
         if handle is not None:
+            assert isinstance(
+                handle,
+                backends.CloudVmRayBackend.ResourceHandle), (cluster_name,
+                                                             handle)
             job['cluster_resources'] = (
                 f'{handle.launched_nodes}x {handle.launched_resources}')
             job['region'] = handle.launched_resources.region

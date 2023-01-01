@@ -2699,18 +2699,21 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
         refresh_cluster_status is only used internally in the status refresh
         process, and should not be set to False in other cases.
         """
-        log_path = os.path.join(os.path.expanduser(self.log_dir),
-                                'teardown.log')
-        log_abs_path = os.path.abspath(log_path)
-        cloud = handle.launched_resources.cloud
-        config = common_utils.read_yaml(handle.cluster_yaml)
         if refresh_cluster_status:
             prev_status, _ = backend_utils.refresh_cluster_status_handle(
                 handle.cluster_name, acquire_per_cluster_status_lock=False)
         else:
             record = global_user_state.get_cluster_from_name(
                 handle.cluster_name)
-            prev_status = record['status']
+            prev_status = record['status'] if record is not None else None
+        if prev_status is None:
+            logger.warning(f'Cluster {handle.cluster_name} does not exist. Skip.')
+            return True
+        log_path = os.path.join(os.path.expanduser(self.log_dir),
+                                'teardown.log')
+        log_abs_path = os.path.abspath(log_path)
+        cloud = handle.launched_resources.cloud
+        config = common_utils.read_yaml(handle.cluster_yaml)
         cluster_name = handle.cluster_name
         use_tpu_vm = config['provider'].get('_has_tpus', False)
         if terminate and isinstance(cloud, clouds.Azure):
@@ -2954,6 +2957,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
             cluster_name: str) -> RetryingVmProvisioner.ToProvisionConfig:
         handle = global_user_state.get_handle_from_cluster_name(cluster_name)
         if handle is not None:
+            assert isinstance(handle, CloudVmRayBackend.ResourceHandle), handle
             # Cluster already exists.
             self.check_resources_fit_cluster(handle, task)
             # Use the existing cluster.
