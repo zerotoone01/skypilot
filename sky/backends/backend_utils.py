@@ -41,6 +41,7 @@ from sky import exceptions
 from sky import global_user_state
 from sky import sky_logging
 from sky import spot as spot_lib
+from sky.backends import cloud_vm_ray_backend
 from sky.backends import onprem_utils
 from sky.skylet import constants
 from sky.skylet import log_lib
@@ -57,7 +58,6 @@ from sky.usage import usage_lib
 if typing.TYPE_CHECKING:
     from sky import resources
     from sky import task as task_lib
-    from sky.backends import cloud_vm_ray_backend
     from sky.backends import local_docker_backend
 
 logger = sky_logging.init_logger(__name__)

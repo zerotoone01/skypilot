@@ -1,10 +1,9 @@
 import enum
 import typing
-from _typeshed import Incomplete
 from sky import sky_logging as sky_logging
 from sky.skylet import log_lib as log_lib
 from sky.utils import subprocess_utils as subprocess_utils
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 from typing_extensions import Literal
 
 GIT_EXCLUDE: str
@@ -41,7 +40,7 @@ class SSHCommandRunner:
 
     @staticmethod
     def make_runner_list(
-            ip_list: List[str],
+            ip_list: Sequence[str],
             ssh_user: str,
             ssh_private_key: str,
             ssh_control_name: Optional[str] = ...) -> List['SSHCommandRunner']:
