@@ -1,5 +1,5 @@
 """Resources: compute requirements of Tasks."""
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 from sky import clouds
 from sky import global_user_state
@@ -655,7 +655,7 @@ class Resources:
         assert len(override) == 0
         return resources
 
-    def valid_on_region_zones(self, region: str, zones: List[str]) -> bool:
+    def valid_on_region_zones(self, region: str, zones: Sequence[str]) -> bool:
         """Returns whether this Resources is valid on given region and zones"""
         if self.region is not None and self.region != region:
             return False

@@ -4,7 +4,7 @@ import os
 import subprocess
 import time
 import typing
-from typing import Any, Dict, Optional, Tuple, Type, Union, List
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
 from typing_extensions import TypeAlias
 import urllib.parse
 
@@ -464,7 +464,7 @@ class Storage(object):
           is_local_path: bool; Whether the source is a local path. False if URI.
         """
 
-        def _check_basename_conflicts(source_list: List[str]) -> None:
+        def _check_basename_conflicts(source_list: Sequence[str]) -> None:
             """Checks if two paths in source_list have the same basename."""
             basenames = [os.path.basename(s) for s in source_list]
             conflicts = {x for x in basenames if basenames.count(x) > 1}
@@ -668,6 +668,8 @@ class Storage(object):
         if store.is_sky_managed:
             self.handle.add_store(store)
             if not is_reconstructed:
+                if typing.TYPE_CHECKING:
+                    assert self.name is not None, self
                 global_user_state.add_or_update_storage(self.name, self.handle,
                                                         StorageStatus.INIT)
 
@@ -891,7 +893,7 @@ class S3Store(AbstractStore):
         return aws.resource('s3').Bucket(self.name)
 
     def batch_aws_rsync(self,
-                        source_path_list: List[Path],
+                        source_path_list: Sequence[Path],
                         create_dirs: bool = False) -> None:
         """Invokes aws s3 sync to batch upload a list of local paths to S3
 
@@ -1171,7 +1173,7 @@ class GcsStore(AbstractStore):
         return self.client.get_bucket(self.name)
 
     def batch_gsutil_cp(self,
-                        source_path_list: List[Path],
+                        source_path_list: Sequence[Path],
                         create_dirs: bool = False) -> None:
         """Invokes gsutil cp -n to batch upload a list of local paths
 

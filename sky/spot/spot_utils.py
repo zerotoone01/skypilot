@@ -59,6 +59,7 @@ def get_job_status(backend: 'backends.CloudVmRayBackend',
     It can be None, INIT, RUNNING, SUCCEEDED, FAILED or CANCELLED.
     """
     handle = global_user_state.get_handle_from_cluster_name(cluster_name)
+    assert isinstance(handle, backends.CloudVmRayBackend.ResourceHandle), handle
     status = None
     try:
         logger.info('=== Checking the job status... ===')
@@ -252,6 +253,8 @@ def stream_logs_by_id(job_id: int, follow: bool = True) -> str:
         while spot_status is None or not spot_status.is_terminal():
             handle = global_user_state.get_handle_from_cluster_name(
                 cluster_name)
+            assert isinstance(handle,
+                              backends.CloudVmRayBackend.ResourceHandle), handle
             # Check the handle: The cluster can be preempted and removed from
             # the table before the spot state is updated by the controller. In
             # this case, we should skip the logging, and wait for the next

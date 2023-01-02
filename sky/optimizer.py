@@ -2,7 +2,7 @@
 import collections
 import enum
 import typing
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import colorama
 import numpy as np
@@ -44,7 +44,7 @@ class OptimizeTarget(enum.Enum):
 
 
 # For logging purposes.
-def _create_table(field_names: List[str]) -> prettytable.PrettyTable:
+def _create_table(field_names: Sequence[str]) -> prettytable.PrettyTable:
     table_kwargs = {
         'hrules': prettytable.FRAME,
         'vrules': prettytable.NONE,
@@ -202,7 +202,7 @@ class Optimizer:
 
     @staticmethod
     def _estimate_nodes_cost_or_time(
-        topo_order: List[task_lib.Task],
+        topo_order: Sequence[task_lib.Task],
         minimize_cost: bool = True,
         blocked_launchable_resources: Optional[Iterable[
             resources_lib.Resources]] = None,
@@ -296,7 +296,7 @@ class Optimizer:
 
     @staticmethod
     def _optimize_by_dp(
-        topo_order: List[task_lib.Task],
+        topo_order: Sequence[task_lib.Task],
         node_to_cost_map: _TaskToCostMap,
         minimize_cost: bool = True,
     ) -> Tuple[Dict[task_lib.Task, resources_lib.Resources], float]:
@@ -358,7 +358,7 @@ class Optimizer:
     @staticmethod
     def _optimize_by_ilp(
         graph: 'nx.DiGraph',
-        topo_order: List[task_lib.Task],
+        topo_order: Sequence[task_lib.Task],
         node_to_cost_map: _TaskToCostMap,
         minimize_cost: bool = True,
     ) -> Tuple[Dict[task_lib.Task, resources_lib.Resources], float]:
@@ -508,7 +508,7 @@ class Optimizer:
     @staticmethod
     def _compute_total_time(
         graph,
-        topo_order: List[task_lib.Task],
+        topo_order: Sequence[task_lib.Task],
         plan: Dict[task_lib.Task, resources_lib.Resources],
     ) -> float:
         """Estimates the total time of running the DAG by the plan."""
@@ -542,7 +542,7 @@ class Optimizer:
     @staticmethod
     def _compute_total_cost(
         graph,
-        topo_order: List[task_lib.Task],
+        topo_order: Sequence[task_lib.Task],
         plan: Dict[task_lib.Task, resources_lib.Resources],
     ) -> float:
         """Estimates the total cost of running the DAG by the plan."""
@@ -602,7 +602,7 @@ class Optimizer:
     @staticmethod
     def print_optimized_plan(
         graph,
-        topo_order: List[task_lib.Task],
+        topo_order: Sequence[task_lib.Task],
         best_plan: Dict[task_lib.Task, resources_lib.Resources],
         total_time: float,
         total_cost: float,
@@ -835,7 +835,7 @@ class DummyCloud(clouds.Cloud):
     pass
 
 
-def _cloud_in_list(cloud: clouds.Cloud, lst: List[clouds.Cloud]) -> bool:
+def _cloud_in_list(cloud: clouds.Cloud, lst: Sequence[clouds.Cloud]) -> bool:
     return any(cloud.is_same_cloud(c) for c in lst)
 
 
@@ -880,7 +880,7 @@ def _make_launchables_for_valid_region_zones(
 
 
 def _filter_out_blocked_launchable_resources(
-        launchable_resources: List[resources_lib.Resources],
+        launchable_resources: Sequence[resources_lib.Resources],
         blocked_launchable_resources: Iterable[resources_lib.Resources]):
     """Whether the resources are blocked."""
     available_resources = []

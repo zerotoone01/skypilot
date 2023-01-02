@@ -5,7 +5,7 @@ import hashlib
 import os
 import pathlib
 import shlex
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 from sky import sky_logging
 from sky.utils import subprocess_utils
@@ -134,7 +134,7 @@ class SSHCommandRunner:
 
     @staticmethod
     def make_runner_list(
-            ip_list: List[str],
+            ip_list: Sequence[str],
             ssh_user: str,
             ssh_private_key: str,
             ssh_control_name: Optional[str] = None) -> List['SSHCommandRunner']:

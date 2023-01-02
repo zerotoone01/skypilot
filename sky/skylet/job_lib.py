@@ -8,7 +8,7 @@ import pathlib
 import shlex
 import time
 import typing
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import filelock
 
@@ -246,7 +246,7 @@ def get_status(job_id: int) -> Optional[JobStatus]:
         return get_status_no_lock(job_id)
 
 
-def get_statuses_payload(job_ids: List[Optional[int]]) -> str:
+def get_statuses_payload(job_ids: Sequence[Optional[int]]) -> str:
     # Per-job lock is not required here, since the staled job status will not
     # affect the caller.
     query_str = ','.join(['?'] * len(job_ids))
@@ -334,7 +334,7 @@ def _get_jobs(username: Optional[str],
     return records
 
 
-def _get_jobs_by_ids(job_ids: List[int]) -> List[Dict[str, Any]]:
+def _get_jobs_by_ids(job_ids: Sequence[int]) -> List[Dict[str, Any]]:
     rows = _CURSOR.execute(
         f"""\
         SELECT * FROM jobs
@@ -347,7 +347,7 @@ def _get_jobs_by_ids(job_ids: List[int]) -> List[Dict[str, Any]]:
 
 
 def update_job_status(job_owner: str,
-                      job_ids: List[int],
+                      job_ids: Sequence[int],
                       silent: bool = False) -> List[JobStatus]:
     """Updates and returns the job statuses matching our `JobStatus` semantics
 
@@ -472,7 +472,7 @@ def is_cluster_idle() -> bool:
     assert False, 'Should not reach here'
 
 
-def format_job_queue(jobs: List[Dict[str, Any]]):
+def format_job_queue(jobs: Sequence[Dict[str, Any]]):
     """Format the job queue for display.
 
     Usage:
@@ -581,7 +581,8 @@ def get_run_timestamp(job_id: Optional[int]) -> Optional[str]:
     return run_timestamp
 
 
-def run_timestamp_with_globbing_payload(job_ids: List[Optional[str]]) -> str:
+def run_timestamp_with_globbing_payload(
+        job_ids: Sequence[Optional[str]]) -> str:
     """Returns the relative paths to the log files for job with globbing."""
     query_str = ' OR '.join(['job_id GLOB (?)'] * len(job_ids))
     _CURSOR.execute(

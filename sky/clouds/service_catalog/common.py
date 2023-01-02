@@ -2,7 +2,7 @@
 import hashlib
 import os
 import time
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 import difflib
 import filelock
@@ -165,7 +165,7 @@ def validate_region_zone_impl(
         zone: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     """Validates whether region and zone exist in the catalog."""
 
-    def _get_candidate_str(loc: str, all_loc: List[str]) -> str:
+    def _get_candidate_str(loc: str, all_loc: Sequence[str]) -> str:
         candidate_loc = difflib.get_close_matches(loc, all_loc, n=5, cutoff=0.9)
         candidate_loc = sorted(candidate_loc)
         candidate_strs = ''

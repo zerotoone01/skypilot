@@ -6,7 +6,7 @@ the information from GCP websites.
 import argparse
 import os
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from lxml import html
 import pandas as pd
@@ -267,7 +267,7 @@ def get_vm_zones(url: str) -> pd.DataFrame:
     return df
 
 
-def get_vm_df(region_prefix: str, a100_zones: List[str]) -> pd.DataFrame:
+def get_vm_df(region_prefix: str, a100_zones: Sequence[str]) -> pd.DataFrame:
     """Generates the GCP service catalog for host VMs."""
     vm_price_table_urls = get_iframe_sources(GCP_VM_PRICING_URL)
     # Skip the table for "Suspended VM instances".

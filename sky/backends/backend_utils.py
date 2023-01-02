@@ -14,7 +14,7 @@ import textwrap
 import threading
 import time
 import typing
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 from typing_extensions import Literal
 import uuid
 
@@ -384,7 +384,7 @@ class SSHConfigHelper(object):
     def add_cluster(
         cls,
         cluster_name: str,
-        ips: List[str],
+        ips: Sequence[str],
         auth_config: Dict[str, str],
     ):
         """Add authentication information for cluster to local SSH config file.
@@ -473,7 +473,7 @@ class SSHConfigHelper(object):
     def _add_multinode_config(
         cls,
         cluster_name: str,
-        external_worker_ips: List[str],
+        external_worker_ips: Sequence[str],
         auth_config: Dict[str, str],
     ):
         username = auth_config['ssh_user']
@@ -1045,7 +1045,7 @@ def ssh_credential_from_yaml(cluster_yaml: str) -> Dict[str, str]:
 
 
 def parallel_data_transfer_to_nodes(
-    runners: List[command_runner.SSHCommandRunner],
+    runners: Sequence[command_runner.SSHCommandRunner],
     source: Optional[str],
     target: str,
     cmd: Optional[str],
@@ -1372,7 +1372,7 @@ def check_network_connection():
 
 def _process_cli_query(
     cloud: str, cluster: str, query_cmd: str, deliminiator: str,
-    status_map: Dict[str, Optional[global_user_state.ClusterStatus]]
+    status_map: Mapping[str, Optional[global_user_state.ClusterStatus]]
 ) -> List[global_user_state.ClusterStatus]:
     """Run the cloud CLI query and returns cluster status.
 

@@ -13,7 +13,7 @@ import pathlib
 import pickle
 import time
 import typing
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from sky import clouds
 from sky.utils import db_utils
@@ -325,6 +325,7 @@ def get_cluster_from_name(
             'metadata': json.loads(metadata),
         }
         return record
+    return None
 
 
 def get_clusters() -> List[Dict[str, Any]]:
@@ -363,10 +364,15 @@ def get_enabled_clouds() -> List[clouds.Cloud]:
     for (value,) in rows:
         ret = json.loads(value)
         break
-    return [clouds.CLOUD_REGISTRY.from_str(cloud) for cloud in ret]
+    enabled_clouds: List[clouds.Cloud] = []
+    for c in ret:
+        cloud = clouds.CLOUD_REGISTRY.from_str(c)
+        if cloud is not None:
+            enabled_clouds.append(cloud)
+    return enabled_clouds
 
 
-def set_enabled_clouds(enabled_clouds: List[str]) -> None:
+def set_enabled_clouds(enabled_clouds: Sequence[str]) -> None:
     _DB.cursor.execute('INSERT OR REPLACE INTO config VALUES (?, ?)',
                        (_ENABLED_CLOUDS_KEY, json.dumps(enabled_clouds)))
     _DB.conn.commit()
@@ -409,15 +415,17 @@ def set_storage_status(storage_name: str, status: StorageStatus) -> None:
         raise ValueError(f'Storage {storage_name} not found.')
 
 
-def get_storage_status(storage_name: str) -> None:
+def get_storage_status(storage_name: str) -> Optional[StorageStatus]:
     assert storage_name is not None, 'storage_name cannot be None'
     rows = _DB.cursor.execute('SELECT status FROM storage WHERE name=(?)',
                               (storage_name,))
     for (status,) in rows:
         return StorageStatus[status]
+    return None
 
 
-def set_storage_handle(storage_name: str, handle: 'Storage.StorageMetadata'):
+def set_storage_handle(storage_name: str,
+                       handle: 'Storage.StorageMetadata') -> None:
     _DB.cursor.execute('UPDATE storage SET handle=(?) WHERE name=(?)', (
         pickle.dumps(handle),
         storage_name,
@@ -439,6 +447,7 @@ def get_handle_from_storage_name(
         if handle is None:
             return None
         return pickle.loads(handle)
+    return None
 
 
 def get_glob_storage_name(storage_name: str) -> List[str]:

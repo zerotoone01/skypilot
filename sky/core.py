@@ -248,6 +248,8 @@ def stop(cluster_name: str, purge: bool = False) -> None:
     backend = backend_utils.get_backend_from_handle(handle)
 
     if isinstance(backend, backends.CloudVmRayBackend):
+        assert isinstance(handle,
+                          backends.CloudVmRayBackend.ResourceHandle), handle
         if tpu_utils.is_tpu_vm_pod(handle.launched_resources):
             # Reference:
             # https://cloud.google.com/tpu/docs/managing-tpus-tpu-vm#stopping_a_with_gcloud  # pylint: disable=line-too-long

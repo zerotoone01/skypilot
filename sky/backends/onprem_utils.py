@@ -5,7 +5,7 @@ import os
 import socket
 import tempfile
 import textwrap
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import click
 from packaging import version
@@ -156,7 +156,8 @@ def get_local_cluster_config_or_error(cluster_name: str) -> Dict[str, Any]:
     raise ValueError(f'Cluster config {local_file} not found.')
 
 
-def check_and_install_local_env(ips: List[str], auth_config: Dict[str, str]):
+def check_and_install_local_env(ips: Sequence[str], auth_config: Dict[str,
+                                                                      str]):
     """Checks if SkyPilot dependencies are present on the machine. Installs
     them if not already installed.
 
@@ -238,7 +239,8 @@ def check_and_install_local_env(ips: List[str], auth_config: Dict[str, str]):
 
 
 def get_local_cluster_accelerators(
-        ips: List[str], auth_config: Dict[str, str]) -> List[Dict[str, int]]:
+        ips: Sequence[str], auth_config: Dict[str,
+                                              str]) -> List[Dict[str, int]]:
     """Gets the custom accelerators for the local cluster.
 
     Loops through all cluster nodes to obtain a mapping of specific acclerator
@@ -319,8 +321,9 @@ def get_local_cluster_accelerators(
     return custom_resources
 
 
-def launch_ray_on_local_cluster(cluster_config: Dict[str, Dict[str, Any]],
-                                custom_resources: List[Dict[str, int]]) -> None:
+def launch_ray_on_local_cluster(
+        cluster_config: Dict[str, Dict[str, Any]],
+        custom_resources: Sequence[Dict[str, int]]) -> None:
     """Launches Ray on all nodes for local cluster.
 
     Launches Ray on the root user of all nodes and opens the Ray dashboard port

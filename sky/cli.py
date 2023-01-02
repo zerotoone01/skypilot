@@ -129,7 +129,7 @@ def _get_glob_storages(storages: Sequence[str]) -> List[str]:
     return list(set(glob_storages))
 
 
-def _warn_if_local_cluster(cluster: str, local_clusters: List[str],
+def _warn_if_local_cluster(cluster: str, local_clusters: Sequence[str],
                            message: str) -> bool:
     """Raises warning if the cluster name is a local cluster."""
     if cluster in local_clusters:
@@ -546,7 +546,7 @@ def _uninstall_shell_completion(ctx: click.Context, param: click.Parameter,
     ctx.exit()
 
 
-def _add_click_options(options: List[click.Option]):
+def _add_click_options(options: Sequence[click.Option]):
     """A decorator for adding a list of click option decorators."""
 
     def _add_options(func):
@@ -911,7 +911,7 @@ def _check_yaml(entrypoint: str) -> Tuple[bool, Optional[Dict[str, Any]]]:
 
 
 def _make_task_from_entrypoint_with_overrides(
-    entrypoint: List[str],
+    entrypoint: Sequence[str],
     *,
     name: Optional[str] = None,
     cluster: Optional[str] = None,
@@ -925,7 +925,7 @@ def _make_task_from_entrypoint_with_overrides(
     use_spot: Optional[bool] = None,
     image_id: Optional[str] = None,
     disk_size: Optional[int] = None,
-    env: Optional[List[Tuple[str, str]]] = None,
+    env: Optional[Sequence[Tuple[str, str]]] = None,
     # spot launch specific
     spot_recovery: Optional[str] = None,
 ) -> sky.Task:
@@ -1156,7 +1156,7 @@ def cli():
               help='Skip setup phase when (re-)launching cluster.')
 @usage_lib.entrypoint
 def launch(
-    entrypoint: List[str],
+    entrypoint: Sequence[str],
     cluster: Optional[str],
     dryrun: bool,
     detach_setup: bool,
@@ -1172,7 +1172,7 @@ def launch(
     num_nodes: Optional[int],
     use_spot: Optional[bool],
     image_id: Optional[str],
-    env: List[Tuple[str, str]],
+    env: Sequence[Tuple[str, str]],
     disk_size: Optional[int],
     idle_minutes_to_autostop: Optional[int],
     down: bool,  # pylint: disable=redefined-outer-name
@@ -1255,7 +1255,7 @@ def launch(
 # pylint: disable=redefined-builtin
 def exec(
     cluster: str,
-    entrypoint: List[str],
+    entrypoint: Sequence[str],
     detach_run: bool,
     name: Optional[str],
     cloud: Optional[str],
@@ -1267,7 +1267,7 @@ def exec(
     num_nodes: Optional[int],
     use_spot: Optional[bool],
     image_id: Optional[str],
-    env: List[Tuple[str, str]],
+    env: Sequence[Tuple[str, str]],
 ):
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
     """Execute a task or a command on a cluster (skip setup).
@@ -1618,7 +1618,7 @@ def logs(
               help='Cancel all jobs on the specified cluster.')
 @click.argument('jobs', required=False, type=int, nargs=-1)
 @usage_lib.entrypoint
-def cancel(cluster: str, all: bool, jobs: List[int]):  # pylint: disable=redefined-builtin
+def cancel(cluster: str, all: bool, jobs: Sequence[int]):  # pylint: disable=redefined-builtin
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
     """Cancel job(s)."""
     try:
@@ -2874,7 +2874,7 @@ def spot():
 @timeline.event
 @usage_lib.entrypoint
 def spot_launch(
-    entrypoint: List[str],
+    entrypoint: Sequence[str],
     name: Optional[str],
     workdir: Optional[str],
     cloud: Optional[str],
@@ -2886,7 +2886,7 @@ def spot_launch(
     use_spot: Optional[bool],
     image_id: Optional[str],
     spot_recovery: Optional[str],
-    env: List[Tuple[str, str]],
+    env: Sequence[Tuple[str, str]],
     disk_size: Optional[int],
     detach_run: bool,
     retry_until_up: bool,
@@ -3198,7 +3198,7 @@ def benchmark_launch(
     num_nodes: Optional[int],
     use_spot: Optional[bool],
     image_id: Optional[str],
-    env: List[Tuple[str, str]],
+    env: Sequence[Tuple[str, str]],
     disk_size: Optional[int],
     idle_minutes_to_autostop: Optional[int],
     yes: bool,
@@ -3569,7 +3569,7 @@ def benchmark_show(benchmark: str) -> None:
 @usage_lib.entrypoint
 def benchmark_down(
     benchmark: str,
-    clusters_to_exclude: List[str],
+    clusters_to_exclude: Sequence[str],
     yes: bool,
 ) -> None:
     """Tear down all clusters belonging to a benchmark."""

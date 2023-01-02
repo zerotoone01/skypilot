@@ -2,7 +2,7 @@
 from multiprocessing import pool
 import psutil
 import subprocess
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Sequence, Union
 
 import colorama
 
@@ -38,7 +38,7 @@ def run_no_outputs(cmd, **kwargs):
                **kwargs)
 
 
-def run_in_parallel(func: Callable, args: List[Any]) -> List[Any]:
+def run_in_parallel(func: Callable, args: Sequence[Any]) -> List[Any]:
     """Run a function in parallel on a list of arguments.
 
     The function should raise a CommandError if the command fails.

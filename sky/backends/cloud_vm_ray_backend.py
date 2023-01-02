@@ -14,7 +14,7 @@ import tempfile
 import textwrap
 import time
 import typing
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
 
 import colorama
 import filelock
@@ -269,7 +269,7 @@ class RayCodeGen:
         self,
         num_nodes: int,
         accelerator_dict: Optional[Dict[str, float]],
-        stable_cluster_internal_ips: List[str],
+        stable_cluster_internal_ips: Sequence[str],
     ) -> None:
         """Create the gang scheduling placement group for a Task.
 
@@ -2707,7 +2707,8 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
                 handle.cluster_name)
             prev_status = record['status'] if record is not None else None
         if prev_status is None:
-            logger.warning(f'Cluster {handle.cluster_name} does not exist. Skip.')
+            logger.warning(
+                f'Cluster {handle.cluster_name} does not exist. Skip.')
             return True
         log_path = os.path.join(os.path.expanduser(self.log_dir),
                                 'teardown.log')
