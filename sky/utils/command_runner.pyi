@@ -48,10 +48,10 @@ class SSHCommandRunner:
 
     @typing.overload
     def run(self,
-            cmd: Union[str, List[str]],
+            cmd: Union[str, Sequence[str]],
             *,
             require_outputs: Literal[False] = ...,
-            port_forward: Optional[List[int]] = ...,
+            port_forward: Optional[Sequence[int]] = ...,
             log_path: str = ...,
             process_stream: bool = ...,
             stream_logs: bool = ...,
@@ -62,10 +62,10 @@ class SSHCommandRunner:
 
     @typing.overload
     def run(self,
-            cmd: Union[str, List[str]],
+            cmd: Union[str, Sequence[str]],
             *,
             require_outputs: Literal[True],
-            port_forward: Optional[List[int]] = ...,
+            port_forward: Optional[Sequence[int]] = ...,
             log_path: str = ...,
             process_stream: bool = ...,
             stream_logs: bool = ...,
@@ -76,10 +76,10 @@ class SSHCommandRunner:
 
     @typing.overload
     def run(self,
-            cmd: Union[str, List[str]],
+            cmd: Union[str, Sequence[str]],
             *,
             require_outputs: bool = ...,
-            port_forward: Optional[List[int]] = ...,
+            port_forward: Optional[Sequence[int]] = ...,
             log_path: str = ...,
             process_stream: bool = ...,
             stream_logs: bool = ...,

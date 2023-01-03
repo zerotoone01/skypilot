@@ -1622,7 +1622,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
                      cluster_yaml: str,
                      launched_nodes: int,
                      launched_resources: resources_lib.Resources,
-                     stable_internal_external_ips: Optional[List[Tuple[
+                     stable_internal_external_ips: Optional[Sequence[Tuple[
                          str, str]]] = None,
                      tpu_create_script: Optional[str] = None,
                      tpu_delete_script: Optional[str] = None) -> None:
@@ -2516,7 +2516,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
     def get_job_status(
         self,
         handle: ResourceHandle,
-        job_ids: Optional[List[int]] = None,
+        job_ids: Optional[Sequence[int]] = None,
         stream_logs: bool = True
     ) -> Dict[Optional[int], Optional[job_lib.JobStatus]]:
         code = job_lib.JobLibCodeGen.get_job_status(job_ids)
@@ -2530,7 +2530,8 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
         statuses = job_lib.load_statuses_payload(stdout)
         return statuses
 
-    def cancel_jobs(self, handle: ResourceHandle, jobs: Optional[List[int]]):
+    def cancel_jobs(self, handle: ResourceHandle,
+                    jobs: Optional[Sequence[int]]):
         job_owner = onprem_utils.get_job_owner(handle.cluster_yaml)
         code = job_lib.JobLibCodeGen.cancel_jobs(job_owner, jobs)
 
@@ -2546,7 +2547,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
     def sync_down_logs(
             self,
             handle: ResourceHandle,
-            job_ids: Optional[List[str]],
+            job_ids: Optional[Sequence[str]],
             local_dir: str = constants.SKY_LOGS_DIRECTORY) -> Dict[str, str]:
         """Sync down logs for the given job_ids.
 
@@ -2917,7 +2918,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayBackend.ResourceHandle']):
         handle: ResourceHandle,
         cmd: str,
         *,
-        port_forward: Optional[List[int]] = None,
+        port_forward: Optional[Sequence[int]] = None,
         log_path: str = '/dev/null',
         process_stream: bool = True,
         stream_logs: bool = False,

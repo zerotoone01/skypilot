@@ -445,7 +445,7 @@ def queue(cluster_name: str,
 # pylint: disable=redefined-builtin
 def cancel(cluster_name: str,
            all: bool = False,
-           job_ids: Optional[List[int]] = None) -> None:
+           job_ids: Optional[Sequence[int]] = None) -> None:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
     """Cancel jobs on a cluster.
 
@@ -534,7 +534,7 @@ def tail_logs(cluster_name: str,
 @usage_lib.entrypoint
 def download_logs(
         cluster_name: str,
-        job_ids: Optional[List[str]],
+        job_ids: Optional[Sequence[str]],
         local_dir: str = constants.SKY_LOGS_DIRECTORY) -> Dict[str, str]:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
     """Download the logs of jobs.
@@ -574,10 +574,11 @@ def download_logs(
 
 
 @usage_lib.entrypoint
-def job_status(cluster_name: str,
-               job_ids: Optional[List[int]],
-               stream_logs: bool = False
-              ) -> Dict[Optional[int], Optional[job_lib.JobStatus]]:
+def job_status(
+    cluster_name: str,
+    job_ids: Optional[Sequence[int]],
+    stream_logs: bool = False
+) -> Dict[Optional[int], Optional[job_lib.JobStatus]]:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
     """Get the status of jobs.
 

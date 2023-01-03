@@ -166,10 +166,10 @@ class SSHCommandRunner:
 
     def run(
             self,
-            cmd: Union[str, List[str]],
+            cmd: Union[str, Sequence[str]],
             *,
             require_outputs: bool = False,
-            port_forward: Optional[List[int]] = None,
+            port_forward: Optional[Sequence[int]] = None,
             # Advanced options.
             log_path: str = os.devnull,
             # If False, do not redirect stdout/stderr to optimize performance.
