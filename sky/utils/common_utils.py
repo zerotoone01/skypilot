@@ -220,7 +220,7 @@ def make_decorator(cls, name_or_fn: Union[str, Callable], **ctx_kwargs):
 
         return _wrapper
     else:
-        if not inspect.isfunction(name_or_fn):
+        if not callable(name_or_fn):
             raise ValueError(
                 'Should directly apply the decorator to a function.')
 

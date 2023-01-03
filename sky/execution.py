@@ -20,6 +20,7 @@ import os
 from typing import Any, Dict, List, Optional, Union
 
 import colorama
+import pydantic
 
 import sky
 from sky import backends
@@ -281,7 +282,7 @@ def _execute(
         print()
         print('\x1b[?25h', end='')  # Show cursor.
 
-
+@pydantic.validate_arguments
 @timeline.event
 @usage_lib.entrypoint
 def launch(
@@ -373,7 +374,7 @@ def launch(
         no_setup=no_setup,
     )
 
-
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def exec(  # pylint: disable=redefined-builtin
     task: Union['sky.Task', 'sky.Dag'],
@@ -453,7 +454,7 @@ def exec(  # pylint: disable=redefined-builtin
              cluster_name=cluster_name,
              detach_run=detach_run)
 
-
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def spot_launch(
     task: Union['sky.Task', 'sky.Dag'],

@@ -4,6 +4,8 @@ import getpass
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
+import pydantic
+
 from sky import dag
 from sky import task
 from sky import backends
@@ -29,6 +31,7 @@ logger = sky_logging.init_logger(__name__)
 # pylint: disable=redefined-builtin
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def status(refresh: bool = False) -> List[Dict[str, Any]]:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
@@ -154,6 +157,7 @@ def _start(
     return handle
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def start(
     cluster_name: str,
@@ -217,6 +221,7 @@ def start(
            force=force)
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def stop(cluster_name: str, purge: bool = False) -> None:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
@@ -270,6 +275,7 @@ def stop(cluster_name: str, purge: bool = False) -> None:
     backend.teardown(handle, terminate=False, purge=purge)
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def down(cluster_name: str, purge: bool = False) -> None:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
@@ -301,6 +307,7 @@ def down(cluster_name: str, purge: bool = False) -> None:
     backend.teardown(handle, terminate=True, purge=purge)
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def autostop(
         cluster_name: str,
@@ -382,6 +389,7 @@ def autostop(
 # ==================
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def queue(cluster_name: str,
           skip_finished: bool = False,
@@ -441,6 +449,7 @@ def queue(cluster_name: str,
     return jobs
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 # pylint: disable=redefined-builtin
 def cancel(cluster_name: str,
@@ -493,6 +502,7 @@ def cancel(cluster_name: str,
     backend.cancel_jobs(handle, job_ids)
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def tail_logs(cluster_name: str,
               job_id: Optional[int],
@@ -531,6 +541,7 @@ def tail_logs(cluster_name: str,
     backend.tail_logs(handle, job_id, follow=follow)
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def download_logs(
         cluster_name: str,
@@ -573,6 +584,7 @@ def download_logs(
     return local_log_dirs
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def job_status(
     cluster_name: str,
@@ -629,6 +641,7 @@ def job_status(
 # =======================
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def spot_status(refresh: bool) -> List[Dict[str, Any]]:
     """[Deprecated] (alias of spot_queue) Get statuses of managed spot jobs."""
@@ -639,6 +652,7 @@ def spot_status(refresh: bool) -> List[Dict[str, Any]]:
     return spot_queue(refresh=refresh)
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def spot_queue(refresh: bool) -> List[Dict[str, Any]]:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
@@ -706,6 +720,7 @@ def spot_queue(refresh: bool) -> List[Dict[str, Any]]:
     return jobs
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 # pylint: disable=redefined-builtin
 def spot_cancel(name: Optional[str] = None,
@@ -764,6 +779,7 @@ def spot_cancel(name: Optional[str] = None,
                 'Please specify the job ID instead of the job name.')
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def spot_tail_logs(name: Optional[str], job_id: Optional[int],
                    follow: bool) -> None:
@@ -799,6 +815,7 @@ def spot_tail_logs(name: Optional[str], job_id: Optional[int],
 # ======================
 # = Storage Management =
 # ======================
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def storage_ls() -> List[Dict[str, Any]]:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
@@ -821,6 +838,7 @@ def storage_ls() -> List[Dict[str, Any]]:
     return storages
 
 
+@pydantic.validate_arguments
 @usage_lib.entrypoint
 def storage_delete(name: str) -> None:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
