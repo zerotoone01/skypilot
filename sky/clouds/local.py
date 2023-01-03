@@ -1,7 +1,7 @@
 """Local/On-premise."""
 import subprocess
 import typing
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from sky import clouds
 
@@ -105,7 +105,7 @@ class Local(clouds.Cloud):
     def make_deploy_resources_variables(
             self, resources: 'resources_lib.Resources',
             region: Optional['clouds.Region'],
-            zones: Optional[List['clouds.Zone']]) -> Dict[str, Optional[str]]:
+            zones: Optional[List['clouds.Zone']]) -> Dict[str, Any]:
         return {}
 
     def get_feasible_launchable_resources(self,

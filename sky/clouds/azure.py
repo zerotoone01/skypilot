@@ -3,7 +3,7 @@ import json
 import os
 import subprocess
 import typing
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from sky import clouds
 from sky import exceptions
@@ -213,7 +213,7 @@ class Azure(clouds.Cloud):
     def make_deploy_resources_variables(
             self, resources: 'resources.Resources',
             region: Optional['clouds.Region'],
-            zones: Optional[List['clouds.Zone']]) -> Dict[str, Optional[str]]:
+            zones: Optional[List['clouds.Zone']]) -> Dict[str, Any]:
         if region is None:
             assert zones is None, (
                 'Set either both or neither for: region, zones.')

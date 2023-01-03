@@ -822,6 +822,8 @@ class Optimizer:
 class DummyResources(resources_lib.Resources):
     """A dummy Resources that has zero egress cost from/to."""
 
+    _REPR = 'DummyCloud'
+
     def __repr__(self) -> str:
         return DummyResources._REPR
 
@@ -831,7 +833,6 @@ class DummyResources(resources_lib.Resources):
 
 class DummyCloud(clouds.Cloud):
     """A dummy Cloud that has zero egress cost from/to."""
-    _REPR = 'DummyCloud'
     pass
 
 
