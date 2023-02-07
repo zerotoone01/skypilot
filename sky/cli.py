@@ -1485,6 +1485,23 @@ def status(all: bool, refresh: bool, clusters: List[str]):  # pylint: disable=re
                    f'{colorama.Style.RESET_ALL}')
     status_utils.show_local_status_table(local_clusters)
 
+    # Show the in-progress spot jobs as well, so that the user can see the
+    # all the resources being used, to avoid unaware costs.
+    in_progress_spot_jobs = None
+    with backend_utils.safe_console_status('[cyan]Fetching in-progress spot jobs[/]'):
+        try:
+            with ux_utils.suppress_output():
+                in_progress_spot_jobs = core.spot_queue(refresh=refresh, skip_finished=True)
+        except exceptions.ClusterNotUpError as e:
+            # TODO(zhwu): Hint the user there might be jobs running when the controller is
+            # in INIT state.
+            pass
+    if in_progress_spot_jobs is not None:
+        table = spot_lib.format_job_table(in_progress_spot_jobs, show_all=all)
+        click.echo(f'{colorama.Fore.CYAN}{colorama.Style.BRIGHT}In-progress spot jobs:'
+                   f'{colorama.Style.RESET_ALL}\n{table}')
+    
+
 
 @cli.command()
 @click.option('--all',
