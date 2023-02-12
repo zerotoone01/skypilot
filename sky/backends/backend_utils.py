@@ -4,6 +4,7 @@ import difflib
 import enum
 import getpass
 import json
+import multiprocessing
 import os
 import pathlib
 import re
@@ -2139,6 +2140,21 @@ class CloudFilter(enum.Enum):
     LOCAL = 'local'
 
 
+def _refresh_cluster(cluster_name):
+    try:
+        record = _refresh_cluster_record(
+            cluster_name,
+            force_refresh=True,
+            acquire_per_cluster_status_lock=True)
+    except (exceptions.ClusterStatusFetchingError,
+            exceptions.CloudUserIdentityError,
+            exceptions.ClusterOwnerIdentityMismatchError) as e:
+        # Do not fail the entire refresh process. The caller will
+        # handle the 'UNKNOWN' status, and collect the errors into
+        # a table.
+        record = {'status': 'UNKNOWN', 'error': e}
+    return record
+
 def get_clusters(
     include_reserved: bool,
     refresh: bool,
@@ -2223,26 +2239,21 @@ def get_clusters(
         f'[bold cyan]Refreshing status for {len(records)} cluster{plural}[/]',
         total=len(records))
 
-    def _refresh_cluster(cluster_name):
-        try:
-            record = _refresh_cluster_record(
-                cluster_name,
-                force_refresh=True,
-                acquire_per_cluster_status_lock=True)
-        except (exceptions.ClusterStatusFetchingError,
-                exceptions.CloudUserIdentityError,
-                exceptions.ClusterOwnerIdentityMismatchError) as e:
-            # Do not fail the entire refresh process. The caller will
-            # handle the 'UNKNOWN' status, and collect the errors into
-            # a table.
-            record = {'status': 'UNKNOWN', 'error': e}
-        progress.update(task, advance=1)
-        return record
-
     cluster_names = [record['name'] for record in records]
     with progress:
-        updated_records = subprocess_utils.run_in_parallel(
-            _refresh_cluster, cluster_names)
+        with multiprocessing.Pool() as pool:
+            futures = {}
+            complete_futures = {}
+            for cluster_name in cluster_names:
+                futures[cluster_name] = pool.apply_async(_refresh_cluster, (cluster_name, ))
+            while futures:
+                for cluster_name, future in list(futures.items()):
+                    if future.ready():
+                        complete_futures[cluster_name] = future
+                        del futures[cluster_name]
+                        progress.advance(task)
+                time.sleep(0.5)
+        updated_records = [complete_futures[cluster_name].get() for cluster_name in cluster_names]
 
     # Show information for removed clusters.
     kept_records = []
