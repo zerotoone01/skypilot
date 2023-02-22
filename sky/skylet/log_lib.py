@@ -67,7 +67,10 @@ def process_subprocess_stream(
             while len(sel.get_map()) > 0:
                 events = sel.select()
                 for key, _ in events:
-                    line = key.fileobj.readline()
+                    # fileobj is either out_io or err_io
+                    # We ignore the type because mypy doesn't know that
+                    # key.fileobj has a readline method.
+                    line = key.fileobj.readline()  # type: ignore
                     if not line:
                         # Unregister the io when EOF reached
                         sel.unregister(key.fileobj)
@@ -111,7 +114,7 @@ def run_with_log(
     cmd: Union[List[str], str],
     log_path: str,
     *,
-    require_outputs: bool = False,
+    require_outputs: bool,
     stream_logs: bool = False,
     start_streaming_at: str = '',
     end_streaming_at: Optional[str] = None,
@@ -124,14 +127,16 @@ def run_with_log(
     ray_job_id: Optional[str] = None,
     use_sudo: bool = False,
     **kwargs,
-) -> Union[int, Tuple[int, str, str]]:
+) -> Tuple[int, str, str]:
     """Runs a command and logs its output to a file.
 
     Args:
         cmd: The command to run.
         log_path: The path to the log file.
         stream_logs: Whether to stream the logs to stdout/stderr.
-        require_outputs: Whether to return the stdout/stderr of the command.
+        require_outputs: This is used to determine whether the stdout and
+            stderr should be returned. If set to False, the stdout and stderr
+            will be empty.
         process_stream: Whether to post-process the stdout/stderr of the
           command. If enabled, lines are printed only when '\r' or '\n' is
           found.
@@ -144,6 +149,14 @@ def run_with_log(
     assert process_stream or not require_outputs, (
         process_stream, require_outputs,
         'require_outputs should be False when process_stream is False')
+    assert process_stream or log_path == os.devnull, (
+        'process_stream should be True when log_path is not /dev/null')
+
+    if not stream_logs and not require_outputs and log_path == os.devnull:
+        # Optimization: If we don't need to stream logs, don't need to
+        # the outputs, and don't need to log to a file, then we don't
+        # need to process the stream.
+        process_stream = False
 
     log_path = os.path.expanduser(log_path)
     dirname = os.path.dirname(log_path)
@@ -205,8 +218,7 @@ def run_with_log(
             # Disable input
             stdin=subprocess.DEVNULL,
         )
-        stdout = ''
-        stderr = ''
+        stdout, stderr = None, None
 
         if process_stream:
             if skip_lines is None:
@@ -235,9 +247,12 @@ def run_with_log(
                 streaming_prefix=streaming_prefix,
             )
         proc.wait()
+
         if require_outputs:
-            return proc.returncode, stdout, stderr
-        return proc.returncode
+            assert stdout is not None and stderr is not None
+        else:
+            stdout = stderr = ''
+        return proc.returncode, stdout, stderr
 
 
 def make_task_bash_script(codegen: str,
@@ -290,7 +305,7 @@ def run_bash_command_with_log(bash_command: str,
                               env_vars: Optional[Dict[str, str]] = None,
                               stream_logs: bool = False,
                               with_ray: bool = False,
-                              use_sudo: bool = False):
+                              use_sudo: bool = False) -> int:
     with tempfile.NamedTemporaryFile('w', prefix='sky_app_',
                                      delete=False) as fp:
         if use_sudo:
@@ -311,14 +326,16 @@ def run_bash_command_with_log(bash_command: str,
         else:
             subprocess_cmd = inner_command
 
-        return run_with_log(subprocess_cmd,
-                            log_path,
-                            ray_job_id=job_lib.make_ray_job_id(
-                                job_id, job_owner),
-                            stream_logs=stream_logs,
-                            with_ray=with_ray,
-                            use_sudo=use_sudo,
-                            shell=True)
+        rc, _, _ = run_with_log(subprocess_cmd,
+                                log_path,
+                                require_outputs=False,
+                                ray_job_id=job_lib.make_ray_job_id(
+                                    job_id, job_owner),
+                                stream_logs=stream_logs,
+                                with_ray=with_ray,
+                                use_sudo=use_sudo,
+                                shell=True)
+    return rc
 
 
 def _follow_job_logs(file,

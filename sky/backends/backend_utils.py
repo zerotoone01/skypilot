@@ -1781,7 +1781,9 @@ def _update_cluster_status_no_lock(
             ssh_credentials = ssh_credential_from_yaml(handle.cluster_yaml)
             runner = command_runner.SSHCommandRunner(external_ips[0],
                                                      **ssh_credentials)
-            returncode = runner.run('ray status', stream_logs=False)
+            returncode = runner.run('ray status',
+                                    stream_logs=False,
+                                    require_outputs=False)[0]
             if returncode:
                 raise exceptions.FetchIPError(
                     reason=exceptions.FetchIPError.Reason.HEAD)

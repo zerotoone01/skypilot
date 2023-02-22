@@ -207,7 +207,7 @@ def _interactive_node_cli_command(cli_func):
                              default=None,
                              type=int,
                              required=False,
-                             help=('OS disk size in GBs.'))
+                             help='OS disk size in GBs.')
     no_confirm = click.option('--yes',
                               '-y',
                               is_flag=True,

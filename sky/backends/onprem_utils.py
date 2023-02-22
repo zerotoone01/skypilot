@@ -302,7 +302,9 @@ def get_local_cluster_accelerators(
         with tempfile.NamedTemporaryFile('w', prefix='sky_app_') as fp:
             fp.write(code)
             fp.flush()
-            runner.run(f'mkdir -p {remote_resource_dir}', stream_logs=False)
+            runner.run(f'mkdir -p {remote_resource_dir}',
+                       require_outputs=False,
+                       stream_logs=False)
             runner.rsync(source=fp.name,
                          target=_SKY_GET_ACCELERATORS_SCRIPT_PATH,
                          up=True,

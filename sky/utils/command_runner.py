@@ -186,7 +186,7 @@ class SSHCommandRunner:
             self,
             cmd: Union[str, List[str]],
             *,
-            require_outputs: bool = False,
+            require_outputs: bool,
             port_forward: Optional[List[int]] = None,
             # Advanced options.
             log_path: str = os.devnull,
@@ -195,7 +195,7 @@ class SSHCommandRunner:
             stream_logs: bool = True,
             ssh_mode: SshMode = SshMode.NON_INTERACTIVE,
             separate_stderr: bool = False,
-            **kwargs) -> Union[int, Tuple[int, str, str]]:
+            **kwargs) -> Tuple[int, str, str]:
         """Uses 'ssh' to run 'cmd' on a node with ip.
 
         Args:
@@ -206,7 +206,9 @@ class SSHCommandRunner:
 
             Advanced options:
 
-            require_outputs: Whether to return the stdout/stderr of the command.
+            require_outputs: This is used to determine whether the stdout and
+                stderr should be returned. If set to False, the stdout and
+                stderr will be empty.
             log_path: Redirect stdout/stderr to the log_path.
             stream_logs: Stream logs to the stdout/stderr.
             check: Check the success of the command.
@@ -220,6 +222,11 @@ class SSHCommandRunner:
             or
             A tuple of (returncode, stdout, stderr).
         """
+        if not require_outputs and not stream_logs:
+            # Optimization: If we don't need the outputs, we can disable
+            # process_stream to avoid the overhead of processing the outputs.
+            process_stream = False
+
         base_ssh_command = self._ssh_base_command(ssh_mode=ssh_mode,
                                                   port_forward=port_forward)
         if ssh_mode == SshMode.LOGIN:

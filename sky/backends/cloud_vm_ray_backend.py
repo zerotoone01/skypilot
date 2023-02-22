@@ -1665,6 +1665,7 @@ class RetryingVmProvisioner(object):
         log_lib.run_with_log(
             [sys.executable, script_path],
             log_abs_path,
+            require_outputs=False,
             stream_logs=False,
             # Use environment variables to disable the ray usage collection
             # (to avoid overheads and potential issues with the usage)
@@ -2474,8 +2475,9 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
                     return
                 setup_log_path = os.path.join(self.log_dir,
                                               f'setup-{runner.ip}.log')
-                returncode = runner.run(
+                returncode, _, _ = runner.run(
                     setup_cmd,
+                    require_outputs=False,
                     log_path=setup_log_path,
                     process_stream=False,
                 )
@@ -2651,6 +2653,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
             remote_run_file = f'/tmp/sky_local/{run_file}'
             # Ensures remote_run_file directory is created.
             runner.run(f'mkdir -p {os.path.dirname(remote_run_file)}',
+                       require_outputs=False,
                        stream_logs=False)
             # We choose to sync code + exec, so that Ray job submission API will
             # work for the multitenant case.
@@ -2659,6 +2662,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
                          up=True,
                          stream_logs=False)
         runner.run(f'mkdir -p {remote_log_dir}; chmod a+rwx {remote_run_file}',
+                   require_outputs=False,
                    stream_logs=False)
         switch_user_cmd = job_lib.make_job_command_with_user_switching(
             ssh_user, remote_run_file)
@@ -3335,8 +3339,9 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
             cmd = (f'[[ -z $TPU_NAME ]] && echo "export TPU_NAME={tpu_name}" '
                    '>> ~/.bashrc || echo "TPU_NAME already set"')
             returncode = runner.run(cmd,
+                                    require_outputs=False,
                                     log_path=os.path.join(
-                                        self.log_dir, 'tpu_setup.log'))
+                                        self.log_dir, 'tpu_setup.log'))[0]
             subprocess_utils.handle_returncode(
                 returncode, cmd, 'Failed to set TPU_NAME on node.')
 
@@ -3461,7 +3466,9 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
         if symlink_command:
 
             def _symlink_node(runner: command_runner.SSHCommandRunner):
-                returncode = runner.run(symlink_command, log_path=log_path)
+                returncode = runner.run(symlink_command,
+                                        log_path=log_path,
+                                        require_outputs=False)[0]
                 subprocess_utils.handle_returncode(
                     returncode, symlink_command,
                     'Failed to create symlinks. The target destination '

@@ -101,6 +101,7 @@ install_requires = [
     'protobuf<4.0.0',
     'psutil',
     'pulp',
+    'typing-extensions',
 ]
 
 # NOTE: Change the templates/spot-controller.yaml.j2 file if any of the following
