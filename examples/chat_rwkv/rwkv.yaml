@@ -1,0 +1,16 @@
+resources:
+  cloud: gcp
+  accelerators: V100:1
+
+setup: |
+  git clone https://github.com/hizkifw/WebChatRWKVstic.git
+  cd WebChatRWKVstic
+
+  conda create -y -n py39 python=3.9
+  conda activate py39
+
+  pip install -r requirements.txt
+  conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia -y
+
+run: |
+  python main.py
