@@ -19,12 +19,6 @@ if typing.TYPE_CHECKING:
 _df = common.read_catalog('gcp/vms.csv')
 _image_df = common.read_catalog('gcp/images.csv')
 
-_TPU_REGIONS = [
-    'us-central1',
-    'europe-west4',
-    'asia-east1',
-]
-
 # Default instance family for CPU-only VMs.
 # This is the latest general-purpose instance family as of Jan 2023.
 # CPU: Intel Ice Lake 8373C or Cascade Lake 6268CL.
@@ -143,6 +137,12 @@ def _closest_power_of_two(x: int) -> int:
         return x
     return 1 << ((x - 1).bit_length() - 1)
 
+
+def _tpu_regions() -> List[str]:
+    """Returns the list of regions where TPU is available."""
+    df = _df.dropna(subset=['AcceleratorName'])
+    df = df[df['AcceleratorName'].str.startswith('tpu-')]
+    return df['Region'].unique().tolist()
 
 def instance_type_exists(instance_type: str) -> bool:
     """Check the existence of the instance type."""
@@ -296,7 +296,7 @@ def get_accelerator_hourly_cost(accelerator: str,
     # NOTE: As of 2022/4/13, Prices of TPU v3-64 to v3-2048 are not available on
     # https://cloud.google.com/tpu/pricing. We put estimates in gcp catalog.
     if region is None:
-        for tpu_region in _TPU_REGIONS:
+        for tpu_region in _tpu_regions():
             df = _get_accelerator(_df, accelerator, count, tpu_region)
             if len(set(df['Price'])) == 1:
                 region = tpu_region
@@ -511,3 +511,10 @@ def is_image_tag_valid(tag: str, region: Optional[str]) -> bool:
     # GCP images are not region-specific.
     del region  # Unused.
     return common.is_image_tag_valid_impl(_image_df, tag, None)
+
+def get_tpus() -> List[str]:
+    """Returns the list of available TPU types."""
+    df = _df.dropna(subset=['AcceleratorName'])
+    df = df[df['AcceleratorName'].str.startswith('tpu-')]
+    return df['AcceleratorName'].unique().tolist()
+
