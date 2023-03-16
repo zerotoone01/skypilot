@@ -89,7 +89,8 @@ def update_spot_job_status(job_id: Optional[int] = None):
     is called.
     """
     if job_id is None:
-        job_ids = spot_state.get_nonterminal_job_ids_by_name(None)
+        job_ids: List[str] = sum(
+            spot_state.get_nonterminal_job_ids_by_names(None).values(), [])
     else:
         job_ids = [job_id]
     for job_id_ in job_ids:
@@ -157,7 +158,8 @@ def cancel_jobs_by_id(job_ids: Optional[List[int]]) -> str:
     If job_ids is None, cancel all jobs.
     """
     if job_ids is None:
-        job_ids = spot_state.get_nonterminal_job_ids_by_name(None)
+        job_ids = sum(
+            spot_state.get_nonterminal_job_ids_by_names(None).values(), [])
     if len(job_ids) == 0:
         return 'No job to cancel.'
     job_id_str = ', '.join(map(str, job_ids))
@@ -199,17 +201,26 @@ def cancel_jobs_by_id(job_ids: Optional[List[int]]) -> str:
     return f'{identity_str} scheduled to be cancelled.'
 
 
-def cancel_job_by_name(job_name: str) -> str:
+def cancel_job_by_names(job_names: Sequence[str]) -> str:
     """Cancel a job by name."""
-    job_ids = spot_state.get_nonterminal_job_ids_by_name(job_name)
+    job_names_to_ids = spot_state.get_nonterminal_job_ids_by_names(job_names)
+    job_ids = sum(job_names_to_ids.values(), [])
     if len(job_ids) == 0:
-        return f'No running job found with name {job_name!r}.'
-    if len(job_ids) > 1:
+        return f'No running job found with name {job_names!r}.'
+
+    # TODO(zhwu) fix!
+    name_has_multiple_jobs = []
+    for job_name, job_ids in job_names_to_ids.items():
+        if len(job_ids) > 1:
+            name_has_multiple_jobs.append(job_name)
+    if name_has_multiple_jobs:
+        name_id_str = ', '.join(f'{name!r}({job_ids})'
+                                for name, job_ids in job_names_to_ids.items())
         return (f'{colorama.Fore.RED}Multiple running jobs found '
-                f'with name {job_name!r}.\n'
-                f'Job IDs: {job_ids}{colorama.Style.RESET_ALL}')
+                'with the following names:\n '
+                f'{name_id_str}{colorama.Style.RESET_ALL}')
     cancel_jobs_by_id(job_ids)
-    return f'Job {job_name!r} is scheduled to be cancelled.'
+    return f'Job {", ".join(job_names)} is scheduled to be cancelled.'
 
 
 def stream_logs_by_id(job_id: int, follow: bool = True) -> str:
@@ -345,7 +356,8 @@ def stream_logs_by_id(job_id: int, follow: bool = True) -> str:
 
 def stream_logs_by_name(job_name: str, follow: bool = True) -> str:
     """Stream logs by name."""
-    job_ids = spot_state.get_nonterminal_job_ids_by_name(job_name)
+    job_ids = sum(
+        spot_state.get_nonterminal_job_ids_by_names(job_name).values(), [])
     if len(job_ids) == 0:
         return (f'{colorama.Fore.RED}No job found with name {job_name!r}.'
                 f'{colorama.Style.RESET_ALL}')
@@ -499,9 +511,9 @@ class SpotCodeGen:
         return cls._build(code)
 
     @classmethod
-    def cancel_job_by_name(cls, job_name: str) -> str:
+    def cancel_job_by_names(cls, job_names: Sequence[str]) -> str:
         code = [
-            f'msg = spot_utils.cancel_job_by_name({job_name!r})',
+            f'msg = spot_utils.cancel_job_by_names({job_names})',
             'print(msg, end="", flush=True)',
         ]
         return cls._build(code)

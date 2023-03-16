@@ -803,7 +803,7 @@ def spot_queue(refresh: bool,
 
 @usage_lib.entrypoint
 # pylint: disable=redefined-builtin
-def spot_cancel(name: Optional[str] = None,
+def spot_cancel(names: Optional[List[str]] = None,
                 job_ids: Optional[Sequence[int]] = None,
                 all: bool = False) -> None:
     # NOTE(dev): Keep the docstring consistent between the Python API and CLI.
@@ -825,10 +825,9 @@ def spot_cancel(name: Optional[str] = None,
             raise exceptions.ClusterNotUpError('',
                                                cluster_status=cluster_status)
 
-    job_id_str = ','.join(map(str, job_ids))
-    if sum([len(job_ids) > 0, name is not None, all]) != 1:
-        argument_str = f'job_ids={job_id_str}' if len(job_ids) > 0 else ''
-        argument_str += f' name={name}' if name is not None else ''
+    if sum([len(job_ids) > 0, bool(names), all]) != 1:
+        argument_str = f'job_ids={job_ids}' if job_ids else ''
+        argument_str += f' name={names}' if names else ''
         argument_str += ' all' if all else ''
         raise ValueError('Can only specify one of JOB_IDS or name or all. '
                          f'Provided {argument_str!r}.')
@@ -840,8 +839,8 @@ def spot_cancel(name: Optional[str] = None,
     elif job_ids:
         code = spot.SpotCodeGen.cancel_jobs_by_id(job_ids)
     else:
-        assert name is not None, (job_ids, name, all)
-        code = spot.SpotCodeGen.cancel_job_by_name(name)
+        assert names is not None, (job_ids, names, all)
+        code = spot.SpotCodeGen.cancel_job_by_names(names)
     # The stderr is redirected to stdout
     returncode, stdout, _ = backend.run_on_head(handle,
                                                 code,

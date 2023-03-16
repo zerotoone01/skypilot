@@ -3390,6 +3390,7 @@ _add_command_alias_to_group(spot, spot_queue, 'status', hidden=True)
               '-n',
               required=False,
               type=str,
+              multiple=True,
               help='Managed spot job name to cancel.')
 @click.argument('job_ids', default=None, type=int, required=False, nargs=-1)
 @click.option('--all',
@@ -3406,7 +3407,8 @@ _add_command_alias_to_group(spot, spot_queue, 'status', hidden=True)
               help='Skip confirmation prompt.')
 @usage_lib.entrypoint
 # pylint: disable=redefined-builtin
-def spot_cancel(name: Optional[str], job_ids: Tuple[int], all: bool, yes: bool):
+def spot_cancel(names: Optional[List[str]], job_ids: Tuple[int], all: bool,
+                yes: bool):
     """Cancel managed spot jobs.
 
     You can provide either a job name or a list of job ids to be cancelled.
@@ -3429,10 +3431,12 @@ def spot_cancel(name: Optional[str], job_ids: Tuple[int], all: bool, yes: bool):
         # Hint messages already printed by the call above.
         sys.exit(1)
 
-    job_id_str = ','.join(map(str, job_ids))
-    if sum([len(job_ids) > 0, name is not None, all]) != 1:
-        argument_str = f'--job-ids {job_id_str}' if len(job_ids) > 0 else ''
-        argument_str += f' --name {name}' if name is not None else ''
+    job_id_str = ' '.join(map(str, job_ids))
+    job_names_str = ' '.join(names)
+    if sum([len(job_ids) > 0, names, all]) != 1:
+        argument_str = job_id_str if len(job_ids) > 0 else ''
+        argument_str += ''.join(
+            f' --name {name}' for name in names) if names else ''
         argument_str += ' --all' if all else ''
         raise click.UsageError(
             'Can only specify one of JOB_IDS or --name or --all. '
@@ -3440,7 +3444,7 @@ def spot_cancel(name: Optional[str], job_ids: Tuple[int], all: bool, yes: bool):
 
     if not yes:
         job_identity_str = (f'managed spot jobs with IDs {job_id_str}'
-                            if job_ids else repr(name))
+                            if job_ids else job_names_str)
         if all:
             job_identity_str = 'all managed spot jobs'
         click.confirm(f'Cancelling {job_identity_str}. Proceed?',
@@ -3448,7 +3452,7 @@ def spot_cancel(name: Optional[str], job_ids: Tuple[int], all: bool, yes: bool):
                       abort=True,
                       show_default=True)
 
-    core.spot_cancel(job_ids=job_ids, name=name, all=all)
+    core.spot_cancel(job_ids=job_ids, names=names, all=all)
 
 
 @spot.command('logs', cls=_DocumentedCodeCommand)

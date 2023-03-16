@@ -1,11 +1,12 @@
 """The database for spot jobs status."""
 # TODO(zhwu): maybe use file based status instead of database, so
 # that we can easily switch to a s3-based storage.
+import collections
 import enum
 import pathlib
 import sqlite3
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union, Sequence
 
 import colorama
 
@@ -317,21 +318,31 @@ def set_cancelled(job_id: int):
 # ======== utility functions ========
 
 
-def get_nonterminal_job_ids_by_name(name: Optional[str]) -> List[int]:
-    """Get non-terminal job ids by name."""
-    name_filter = 'AND job_name=(?)' if name is not None else ''
+def get_nonterminal_job_ids_by_names(
+        names: Optional[Union[str, Sequence[str]]]) -> Dict[str, List[int]]:
+    """Get non-terminal job ids by name.
+    
+    Returns:
+        A dictionary mapping job name to a list of job ids.
+    """
+    if isinstance(names, str):
+        names = [names]
+    assert names is None or len(names) > 0, names
+    name_filter = f'AND job_name in ({", ".join(["?"] * len(names))})' if names else ''
     field_values = [status.value for status in SpotStatus.terminal_statuses()]
-    if name is not None:
-        field_values.append(name)
+    if names:
+        field_values.extend(names)
     statuses = ', '.join(['?'] * len(SpotStatus.terminal_statuses()))
     rows = _CURSOR.execute(
         f"""\
-        SELECT job_id FROM spot
+        SELECT job_name, job_id FROM spot
         WHERE status NOT IN
         ({statuses})
         {name_filter}""", field_values)
-    job_ids = [row[0] for row in rows if row[0] is not None]
-    return job_ids
+    job_name_to_job_ids = collections.defaultdict(list)
+    for job_name, job_id in rows:
+        job_name_to_job_ids[job_name].append(job_id)
+    return job_name_to_job_ids
 
 
 def get_status(job_id: int) -> Optional[SpotStatus]:
