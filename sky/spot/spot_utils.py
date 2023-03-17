@@ -89,7 +89,7 @@ def update_spot_job_status(job_id: Optional[int] = None):
     is called.
     """
     if job_id is None:
-        job_ids: List[str] = sum(
+        job_ids: List[int] = sum(
             spot_state.get_nonterminal_job_ids_by_names(None).values(), [])
     else:
         job_ids = [job_id]
@@ -158,14 +158,16 @@ def cancel_jobs_by_id(job_ids: Optional[List[int]]) -> str:
     If job_ids is None, cancel all jobs.
     """
     if job_ids is None:
-        job_ids = sum(
+        all_job_ids: List[int] = sum(
             spot_state.get_nonterminal_job_ids_by_names(None).values(), [])
-    if len(job_ids) == 0:
+    else:
+        all_job_ids = job_ids
+    if len(all_job_ids) == 0:
         return 'No job to cancel.'
-    job_id_str = ', '.join(map(str, job_ids))
+    job_id_str = ', '.join(map(str, all_job_ids))
     logger.info(f'Cancelling jobs {job_id_str}.')
     cancelled_job_ids = []
-    for job_id in job_ids:
+    for job_id in all_job_ids:
         # Check the status of the managed spot job status. If it is in
         # terminal state, we can safely skip it.
         job_status = spot_state.get_status(job_id)
@@ -204,7 +206,7 @@ def cancel_jobs_by_id(job_ids: Optional[List[int]]) -> str:
 def cancel_job_by_names(job_names: Sequence[str]) -> str:
     """Cancel a job by name."""
     job_names_to_ids = spot_state.get_nonterminal_job_ids_by_names(job_names)
-    job_ids = sum(job_names_to_ids.values(), [])
+    job_ids: List[int] = sum(job_names_to_ids.values(), [])
     if len(job_ids) == 0:
         return f'No running job found with name {job_names!r}.'
 
@@ -356,7 +358,7 @@ def stream_logs_by_id(job_id: int, follow: bool = True) -> str:
 
 def stream_logs_by_name(job_name: str, follow: bool = True) -> str:
     """Stream logs by name."""
-    job_ids = sum(
+    job_ids: List[int] = sum(
         spot_state.get_nonterminal_job_ids_by_names(job_name).values(), [])
     if len(job_ids) == 0:
         return (f'{colorama.Fore.RED}No job found with name {job_name!r}.'

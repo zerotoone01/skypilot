@@ -321,14 +321,19 @@ def set_cancelled(job_id: int):
 def get_nonterminal_job_ids_by_names(
         names: Optional[Union[str, Sequence[str]]]) -> Dict[str, List[int]]:
     """Get non-terminal job ids by name.
-    
+
+    Args:
+        names: A job name or a list of job names. If None, all non-terminal
+            jobs will be returned.
+
     Returns:
         A dictionary mapping job name to a list of job ids.
     """
     if isinstance(names, str):
         names = [names]
     assert names is None or len(names) > 0, names
-    name_filter = f'AND job_name in ({", ".join(["?"] * len(names))})' if names else ''
+    name_filter = (f'AND job_name in ({", ".join(["?"] * len(names))})'
+                   if names else '')
     field_values = [status.value for status in SpotStatus.terminal_statuses()]
     if names:
         field_values.extend(names)

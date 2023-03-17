@@ -3432,8 +3432,7 @@ def spot_cancel(names: Optional[List[str]], job_ids: Tuple[int], all: bool,
         sys.exit(1)
 
     job_id_str = ' '.join(map(str, job_ids))
-    job_names_str = ' '.join(names)
-    if sum([len(job_ids) > 0, names, all]) != 1:
+    if sum([len(job_ids) > 0, bool(names), all]) != 1:
         argument_str = job_id_str if len(job_ids) > 0 else ''
         argument_str += ''.join(
             f' --name {name}' for name in names) if names else ''
@@ -3443,9 +3442,11 @@ def spot_cancel(names: Optional[List[str]], job_ids: Tuple[int], all: bool,
             f'Provided {argument_str!r}.')
 
     if not yes:
-        job_identity_str = (f'managed spot jobs with IDs {job_id_str}'
-                            if job_ids else job_names_str)
-        if all:
+        if job_ids:
+            job_identity_str = f'managed spot jobs with IDs {job_id_str}'
+        elif names:
+            job_identity_str = f'managed spot jobs {" ".join(names)}'
+        else:
             job_identity_str = 'all managed spot jobs'
         click.confirm(f'Cancelling {job_identity_str}. Proceed?',
                       default=True,
