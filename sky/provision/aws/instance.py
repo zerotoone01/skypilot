@@ -312,7 +312,7 @@ def start_instances(region: str, cluster_name: str,
                 _create_head_node_tag(inst, is_head=False)
 
     assert head_instance_id is not None
-    return common.ProvisionMetadata(cloud='aws',
+    return common.ProvisionMetadata(provider_name='aws',
                                     region=region,
                                     zone=zone,
                                     cluster_name=cluster_name,
