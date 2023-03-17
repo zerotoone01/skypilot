@@ -3407,7 +3407,7 @@ _add_command_alias_to_group(spot, spot_queue, 'status', hidden=True)
               help='Skip confirmation prompt.')
 @usage_lib.entrypoint
 # pylint: disable=redefined-builtin
-def spot_cancel(names: Optional[List[str]], job_ids: Tuple[int], all: bool,
+def spot_cancel(name: Optional[List[str]], job_ids: Tuple[int], all: bool,
                 yes: bool):
     """Cancel managed spot jobs.
 
@@ -3430,6 +3430,8 @@ def spot_cancel(names: Optional[List[str]], job_ids: Tuple[int], all: bool,
     if handle is None:
         # Hint messages already printed by the call above.
         sys.exit(1)
+
+    names = name
 
     job_id_str = ' '.join(map(str, job_ids))
     if sum([len(job_ids) > 0, bool(names), all]) != 1:

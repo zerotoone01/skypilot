@@ -210,17 +210,16 @@ def cancel_job_by_names(job_names: Sequence[str]) -> str:
     if len(job_ids) == 0:
         return f'No running job found with name {job_names!r}.'
 
-    # TODO(zhwu) fix!
-    name_has_multiple_jobs = []
-    for job_name, job_ids in job_names_to_ids.items():
-        if len(job_ids) > 1:
-            name_has_multiple_jobs.append(job_name)
-    if name_has_multiple_jobs:
-        name_id_str = ', '.join(f'{name!r}({job_ids})'
-                                for name, job_ids in job_names_to_ids.items())
-        return (f'{colorama.Fore.RED}Multiple running jobs found '
-                'with the following names:\n '
-                f'{name_id_str}{colorama.Style.RESET_ALL}')
+    name_with_multiple_ids: List[str] = []
+    for job_name, ids_for_name in job_names_to_ids.items():
+        if len(ids_for_name) > 1:
+            job_ids_str = ', '.join(map(str, ids_for_name))
+            name_with_multiple_ids.append(f'{job_name} ({job_ids_str})')
+    if name_with_multiple_ids:
+        return (
+            f'{colorama.Fore.RED}Multiple running jobs found '
+            'with the following names:\n '
+            f'{"; ".join(name_with_multiple_ids)}{colorama.Style.RESET_ALL}')
     cancel_jobs_by_id(job_ids)
     return f'Job {", ".join(job_names)} is scheduled to be cancelled.'
 
