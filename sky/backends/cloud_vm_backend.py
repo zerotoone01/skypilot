@@ -21,6 +21,7 @@ from sky.provision import setup as provision_setup
 from sky.provision import utils as provision_utils
 from sky.utils import command_runner
 from sky.utils import common_utils
+from sky.utils import log_utils
 
 logger = sky_logging.init_logger(__name__)
 
@@ -64,7 +65,7 @@ def _bulk_provision(
     #  etc if all nodes are ready. This is a known issue before.
 
     try:
-        with backend_utils.safe_console_status(
+        with log_utils.safe_rich_status(
                 f'[bold cyan]Bootstrapping configurations for '
                 f'[green]{cluster_name}[white] ...'):
             config = provision.bootstrap(provider_name, region_name,
@@ -76,7 +77,7 @@ def _bulk_provision(
 
     for retry_cnt in range(_MAX_RETRY):
         try:
-            with backend_utils.safe_console_status(
+            with log_utils.safe_rich_status(
                     f'[bold cyan]Starting instances for '
                     f'[green]{cluster_name}[white] ...'):
                 provision_metadata = provision.start_instances(provider_name,
@@ -99,7 +100,7 @@ def _bulk_provision(
     # minute errors.
     backoff = common_utils.Backoff(initial_backoff=1, max_backoff_factor=3)
     logger.debug(f'Waiting "{cluster_name}" to be started...')
-    with backend_utils.safe_console_status(
+    with log_utils.safe_rich_status(
             f'[bold cyan]Waiting '
             f'[green]{cluster_name}[bold cyan] to be started...'):
         # AWS would take a very short time (<<1s) updating the state of
@@ -229,9 +230,8 @@ def _post_provision_setup(
     ssh_credentials = backend_utils.ssh_credential_from_yaml(cluster_yaml)
 
     logger.debug(f'Waiting SSH connection for "{cluster_name}" ...')
-    with backend_utils.safe_console_status(
-            f'[bold cyan]Waiting SSH connection for '
-            f'[green]{cluster_name}[white] ...'):
+    with log_utils.safe_rich_status(f'[bold cyan]Waiting SSH connection for '
+                                    f'[green]{cluster_name}[white] ...'):
         provision_utils.wait_for_ssh(cluster_metadata, ssh_credentials)
 
     # We mount the metadata with sky wheel for speedup.
@@ -251,16 +251,15 @@ def _post_provision_setup(
         **config_from_yaml.get('file_mounts', {})
     }
 
-    with backend_utils.safe_console_status(
-            f'[bold cyan]Mounting internal files for '
-            f'[green]{cluster_name}[white] ...'):
+    with log_utils.safe_rich_status(f'[bold cyan]Mounting internal files for '
+                                    f'[green]{cluster_name}[white] ...'):
         provision_setup.internal_file_mounts(cluster_name,
                                              file_mounts,
                                              cluster_metadata,
                                              ssh_credentials,
                                              wheel_hash=wheel_hash)
 
-    with backend_utils.safe_console_status(
+    with log_utils.safe_rich_status(
             f'[bold cyan]Setting up SkyPilot runtime for '
             f'[green]{cluster_name}[white] ...'):
         provision_setup.internal_dependencies_setup(
@@ -269,7 +268,7 @@ def _post_provision_setup(
 
     head_runner = command_runner.SSHCommandRunner(ip_list[0], **ssh_credentials)
 
-    with backend_utils.safe_console_status(
+    with log_utils.safe_rich_status(
             f'[bold cyan]Checking and starting Skylet for '
             f'[green]{cluster_name}[white] ...'):
         provision_setup.start_skylet(head_runner)
@@ -278,9 +277,8 @@ def _post_provision_setup(
     if not provision_metadata.is_instance_just_booted(
             head_instance.instance_id):
         # Check if head node Ray is alive
-        with backend_utils.safe_console_status(
-                f'[bold cyan]Checking Ray status for '
-                f'[green]{cluster_name}[white] ...'):
+        with log_utils.safe_rich_status(f'[bold cyan]Checking Ray status for '
+                                        f'[green]{cluster_name}[white] ...'):
             returncode = head_runner.run('ray status', stream_logs=False)
         if returncode:
             logger.error('Check result: Head node Ray is not up.')
@@ -290,7 +288,7 @@ def _post_provision_setup(
 
     if full_ray_setup:
         logger.debug('Start Ray on the whole cluster.')
-        with backend_utils.safe_console_status(
+        with log_utils.safe_rich_status(
                 f'[bold cyan]Starting Ray on the head node for '
                 f'[green]{cluster_name}[white] ...'):
             provision_setup.start_ray_head_node(head_runner,
@@ -311,7 +309,7 @@ def _post_provision_setup(
         ip_list[1:], **ssh_credentials)
 
     if runners:
-        with backend_utils.safe_console_status(
+        with log_utils.safe_rich_status(
                 f'[bold cyan]Starting Ray on the worker nodes for '
                 f'[green]{cluster_name}[white] ...'):
             provision_setup.start_ray_worker_nodes(
