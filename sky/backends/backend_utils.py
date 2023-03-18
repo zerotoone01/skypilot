@@ -1028,6 +1028,26 @@ def _count_healthy_nodes_from_ray(output: str,
     return ready_head, ready_workers
 
 
+def _count_healthy_nodes_from_ray_new_provisioner(output: str,
+                                                  is_local_cloud: bool = False
+                                                 ) -> Tuple[int, int]:
+    """Count the number of healthy nodes from the output of `ray status`."""
+    ready_head, ready_workers = _count_healthy_nodes_from_ray(output, True)
+
+    if is_local_cloud:
+        return ready_head, ready_workers
+    # NOTE: There will not be a "head node" in Ray status, if the cluster
+    # is not provisioned by Ray. But since we run "ray status" on the head
+    # node, we know that #head_node is 1, and the remaining nodes are worker
+    # nodes.
+    if ready_workers > 1:
+        ready_head += 1
+        ready_workers -= 1
+        assert ready_head <= 1, f'#head node should be <=1 (Got {ready_head}).'
+        return ready_head, ready_workers
+    return ready_head, ready_workers
+
+
 @timeline.event
 def wait_until_ray_cluster_ready(
     cluster_config_file: str,
@@ -1322,6 +1342,7 @@ def get_node_ips(cluster_yaml: str,
     # won't work and we need to query the node IPs with gcloud as
     # implmented in _get_tpu_vm_pod_ips.
     ray_config = common_utils.read_yaml(cluster_yaml)
+    # Use the new provisioner for AWS.
     if ray_config['provider']['module'].startswith('sky.skylet.providers.aws'):
         return _query_cluster_ips('aws', ray_config['provider']['region'],
                                   ray_config['cluster_name'],
@@ -1809,10 +1830,12 @@ def _update_cluster_status_no_lock(
             raise exceptions.FetchIPError(
                 reason=exceptions.FetchIPError.Reason.HEAD)
 
-        # TODO(suquark): we should handle multi-node clusters properly.
-        #  They may be not be ready even if we have their IPs.
-        #  We should check if cache file for file mounts etc exists.
-        ready_head, ready_workers = _count_healthy_nodes_from_ray(output)
+        if isinstance(handle.launched_resources.cloud, clouds.AWS):
+            # Use the new provisioner for AWS.
+            ready_head, ready_workers = _count_healthy_nodes_from_ray_new_provisioner(
+                output)
+        else:
+            ready_head, ready_workers = _count_healthy_nodes_from_ray(output)
 
         if ready_head + ready_workers == handle.launched_nodes:
             ray_cluster_up = True

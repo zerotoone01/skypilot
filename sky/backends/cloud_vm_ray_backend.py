@@ -3085,6 +3085,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
         cluster_name = handle.cluster_name
         use_tpu_vm = config['provider'].get('_has_tpus', False)
 
+        # Use the new provisioner for AWS.
         if isinstance(cloud, clouds.AWS):
             region = config['provider']['region']
             cloud_vm_backend.teardown_cluster(repr(cloud), region, cluster_name,
