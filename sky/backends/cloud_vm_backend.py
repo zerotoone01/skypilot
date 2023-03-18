@@ -143,6 +143,8 @@ def bulk_provision(
         cluster_name=cluster_name,
         provider_config=original_config['provider'],
         authentication_config=original_config['auth'],
+        # NOTE: (might be a legacy issue) we call it
+        # 'ray_head_default' in 'gcp-ray.yaml'
         node_config=original_config['available_node_types']['ray.head.default']
         ['node_config'],
         count=num_nodes,
