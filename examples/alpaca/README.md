@@ -4,4 +4,6 @@ This example shows how to finetune the LlaMA model with Stanford Alpaca on any c
 
 ```bash
 sky launch -c alpaca --env WANDB_MODE=offline finetune.yaml
+# If you have WANDB_API_KEY set locally, you can use the following command instead:
+sky launch -c alpaca --env WANDB_API_KEY finetune.yaml
 ```
