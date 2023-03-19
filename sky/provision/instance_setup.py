@@ -1,4 +1,4 @@
-"""Setup dependencies & services during provisioning."""
+"""Setup dependencies & services for instances."""
 import os
 import time
 from typing import List, Dict, Optional

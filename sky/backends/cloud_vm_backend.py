@@ -17,7 +17,7 @@ from sky import sky_logging
 from sky.backends import backend_utils
 from sky.provision import common as provision_comm
 from sky.provision import metadata_utils
-from sky.provision import setup as provision_setup
+from sky.provision import instance_setup
 from sky.provision import utils as provision_utils
 from sky.utils import command_runner
 from sky.utils import common_utils
@@ -255,16 +255,16 @@ def _post_provision_setup(
 
     with log_utils.safe_rich_status(f'[bold cyan]Mounting internal files for '
                                     f'[green]{cluster_name}[white] ...'):
-        provision_setup.internal_file_mounts(cluster_name,
-                                             file_mounts,
-                                             cluster_metadata,
-                                             ssh_credentials,
-                                             wheel_hash=wheel_hash)
+        instance_setup.internal_file_mounts(cluster_name,
+                                            file_mounts,
+                                            cluster_metadata,
+                                            ssh_credentials,
+                                            wheel_hash=wheel_hash)
 
     with log_utils.safe_rich_status(
             f'[bold cyan]Setting up SkyPilot runtime for '
             f'[green]{cluster_name}[white] ...'):
-        provision_setup.internal_dependencies_setup(
+        instance_setup.internal_dependencies_setup(
             cluster_name, config_from_yaml['setup_commands'], cluster_metadata,
             ssh_credentials)
 
@@ -273,7 +273,7 @@ def _post_provision_setup(
     with log_utils.safe_rich_status(
             f'[bold cyan]Checking and starting Skylet for '
             f'[green]{cluster_name}[white] ...'):
-        provision_setup.start_skylet(head_runner)
+        instance_setup.start_skylet(head_runner)
 
     full_ray_setup = True
     if not provision_metadata.is_instance_just_booted(
@@ -293,8 +293,8 @@ def _post_provision_setup(
         with log_utils.safe_rich_status(
                 f'[bold cyan]Starting Ray on the head node for '
                 f'[green]{cluster_name}[white] ...'):
-            provision_setup.start_ray_head_node(head_runner,
-                                                custom_resource=custom_resource)
+            instance_setup.start_ray_head_node(head_runner,
+                                               custom_resource=custom_resource)
     else:
         logger.debug('Start Ray only on worker nodes.')
 
@@ -314,7 +314,7 @@ def _post_provision_setup(
         with log_utils.safe_rich_status(
                 f'[bold cyan]Starting Ray on the worker nodes for '
                 f'[green]{cluster_name}[white] ...'):
-            provision_setup.start_ray_worker_nodes(
+            instance_setup.start_ray_worker_nodes(
                 runners,
                 head_instance.private_ip,
                 no_restart=not full_ray_setup,
