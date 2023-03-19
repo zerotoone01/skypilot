@@ -1,9 +1,13 @@
-"""A cloud-neutral VM provision backend."""
-from typing import List, Optional
+"""Cloud-neutral VM provision utils."""
+from typing import List, Optional, Dict
+import collections
+import functools
 import json
 import logging
 import os
 import pathlib
+import subprocess
+import socket
 import time
 import traceback
 
@@ -18,10 +22,10 @@ from sky.backends import backend_utils
 from sky.provision import common as provision_comm
 from sky.provision import metadata_utils
 from sky.provision import instance_setup
-from sky.provision import utils as provision_utils
 from sky.utils import command_runner
 from sky.utils import common_utils
 from sky.utils import log_utils
+from sky.utils import ux_utils
 
 logger = sky_logging.init_logger(__name__)
 
@@ -201,6 +205,69 @@ def teardown_cluster(cloud_name: str, region: str, cluster_name: str,
     provision.wait_instances(cloud_name, region, cluster_name, status_to_wait)
 
 
+def _wait_ssh_connection_direct(ip: str) -> bool:
+    try:
+        with socket.create_connection((ip, 22), timeout=1) as s:
+            if s.recv(100).startswith(b'SSH'):
+                return True
+    except socket.timeout:  # this is the most expected exception
+        pass
+    except Exception:  # pylint: disable=broad-except
+        pass
+    return False
+
+
+def _wait_ssh_connection_indirect(
+        ip: str,
+        ssh_user: str,
+        ssh_private_key: str,
+        ssh_control_name: Optional[str] = None,
+        ssh_proxy_command: Optional[str] = None) -> bool:
+    del ssh_control_name
+    # We test ssh with 'echo', because it is of the most common
+    # commandline programs on both Unix-like and Windows platforms.
+    # NOTE: Ray uses 'uptime' command and 10s timeout.
+    command = [
+        'ssh', '-T', '-i', ssh_private_key, f'{ssh_user}@{ip}', '-o',
+        'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=20s', '-o',
+        f'ProxyCommand={ssh_proxy_command}', 'echo'
+    ]
+    proc = subprocess.run(command,
+                          shell=False,
+                          check=False,
+                          stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL)
+    return proc.returncode == 0
+
+
+def wait_for_ssh(cluster_metadata: provision_comm.ClusterMetadata,
+                 ssh_credentials: Dict[str, str]):
+    """Wait until SSH is ready."""
+    ips = cluster_metadata.get_feasible_ips()
+    if cluster_metadata.has_public_ips():
+        # If we can access public IPs, then it is more efficient to test SSH
+        # connection with raw sockets.
+        waiter = _wait_ssh_connection_direct
+    else:
+        # See https://github.com/skypilot-org/skypilot/pull/1512
+        waiter = functools.partial(_wait_ssh_connection_indirect,
+                                   **ssh_credentials)
+
+    timeout = 60 * 10  # 10-min maximum timeout
+    start = time.time()
+    # use a queue for SSH querying
+    ips = collections.deque(ips)
+    while ips:
+        ip = ips.popleft()
+        if not waiter(ip):
+            ips.append(ip)
+            if time.time() - start > timeout:
+                with ux_utils.print_exception_no_traceback():
+                    raise TimeoutError(
+                        f'Wait SSH timeout ({timeout}s) exceeded.')
+            time.sleep(1)
+
+
 def _post_provision_setup(
         cloud_name: str, cluster_name: str, cluster_yaml: str,
         local_wheel_path: pathlib.Path, wheel_hash: str,
@@ -234,7 +301,7 @@ def _post_provision_setup(
     logger.debug(f'Waiting SSH connection for "{cluster_name}" ...')
     with log_utils.safe_rich_status(f'[bold cyan]Waiting SSH connection for '
                                     f'[green]{cluster_name}[white] ...'):
-        provision_utils.wait_for_ssh(cluster_metadata, ssh_credentials)
+        wait_for_ssh(cluster_metadata, ssh_credentials)
 
     # We mount the metadata with sky wheel for speedup.
     # NOTE: currently we mount all credentials for all nodes, because
