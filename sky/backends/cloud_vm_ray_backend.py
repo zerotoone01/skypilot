@@ -36,7 +36,7 @@ from sky import task as task_lib
 from sky.data import data_utils
 from sky.data import storage as storage_lib
 from sky.backends import backend_utils
-from sky.backends import cloud_vm_backend
+from sky.backends import provision_utils
 from sky.backends import onprem_utils
 from sky.backends import wheel_utils
 from sky.provision import metadata_utils
@@ -1249,7 +1249,7 @@ class RetryingVmProvisioner(object):
                                                             region)
                 cluster_name = handle.cluster_name
                 num_nodes = handle.launched_nodes
-                provision_metadata = cloud_vm_backend.bulk_provision(
+                provision_metadata = provision_utils.bulk_provision(
                     to_provision.cloud,
                     region,
                     zones,
@@ -2310,7 +2310,7 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
                 provision_metadata = config_dict['provision_metadata']
                 resources_vars = config_dict['resources_vars']
 
-                cluster_metadata = cloud_vm_backend.post_provision_setup(
+                cluster_metadata = provision_utils.post_provision_setup(
                     repr(handle.launched_resources.cloud),
                     cluster_name,
                     handle.cluster_yaml,
@@ -3088,8 +3088,8 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
         # Use the new provisioner for AWS.
         if isinstance(cloud, clouds.AWS):
             region = config['provider']['region']
-            cloud_vm_backend.teardown_cluster(repr(cloud), region, cluster_name,
-                                              terminate)
+            provision_utils.teardown_cluster(repr(cloud), region, cluster_name,
+                                             terminate)
             if post_teardown_cleanup:
                 return self.post_teardown_cleanup(handle, terminate, purge)
             else:
