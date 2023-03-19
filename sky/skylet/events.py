@@ -136,9 +136,19 @@ class AutostopEvent(SkyletEvent):
             action = 'down' if autostop_config.down else 'stop'
             logger.info(f'Running auto {action}.')
             if autostop_config.down:
-                provision.terminate_instances_with_self(metadata.provider_name)
+                action_func = provision.terminate_instances
             else:
-                provision.stop_instances_with_self(metadata.provider_name)
+                action_func = provision.stop_instances
+            # Take down workers before taking down the head instance,
+            # which is the instance that is running this code.
+            action_func(metadata.provider_name,
+                        metadata.region,
+                        metadata.cluster_name,
+                        excluded_instances=[metadata.head_instance_id])
+            action_func(metadata.provider_name,
+                        metadata.region,
+                        metadata.cluster_name,
+                        included_instances=[metadata.head_instance_id])
             return
 
         if (autostop_config.backend ==

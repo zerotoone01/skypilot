@@ -1,6 +1,7 @@
 """This module provides a standard low-level interface that all
 providers supported by Skypilot need to follow."""
 
+from typing import List, Optional
 import functools
 import importlib
 import inspect
@@ -35,7 +36,9 @@ def _router(func):
 @_router
 def bootstrap(provider_name: str, region: str, cluster_name: str,
               config: common.InstanceConfig) -> common.InstanceConfig:
-    """This function sets up ancillary resources for an instance
+    """Bootstrap configurations for a cluster.
+
+    This function sets up ancillary resources for an instance
     in the specified cluster with the provided configuration,
     and returns an InstanceConfig object with updated configuration.
 
@@ -55,28 +58,22 @@ def start_instances(provider_name: str, region: str, cluster_name: str,
 
 
 @_router
-def stop_instances(provider_name: str, region: str, cluster_name: str) -> None:
+def stop_instances(provider_name: str,
+                   region: str,
+                   cluster_name: str,
+                   included_instances: Optional[List[str]] = None,
+                   excluded_instances: Optional[List[str]] = None) -> None:
     """Stop running instances."""
     raise NotImplementedError
 
 
 @_router
-def terminate_instances(provider_name: str, region: str,
-                        cluster_name: str) -> None:
+def terminate_instances(provider_name: str,
+                        region: str,
+                        cluster_name: str,
+                        included_instances: Optional[List[str]] = None,
+                        excluded_instances: Optional[List[str]] = None) -> None:
     """Terminate running or stopped instances."""
-    raise NotImplementedError
-
-
-@_router
-def stop_instances_with_self(provider_name: str) -> None:
-    """A helper function to stop instances within the targeted instance."""
-    raise NotImplementedError
-
-
-@_router
-def terminate_instances_with_self(provider_name: str) -> None:
-    """A helper function to terminate instances within the
-    targeted instance."""
     raise NotImplementedError
 
 

@@ -1,5 +1,5 @@
 """AWS instance provisioning."""
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Optional
 
 import copy
 import time
@@ -321,7 +321,28 @@ def start_instances(region: str, cluster_name: str,
                                     created_instance_ids=created_instance_ids)
 
 
-def stop_instances(region: str, cluster_name: str) -> None:
+def _filter_instances(ec2, filters: List[Dict[str, Any]],
+                      included_instances: Optional[List[str]],
+                      exclude_instances: Optional[List[str]]):
+    instances = ec2.instances.filter(Filters=filters)
+    if included_instances is not None and exclude_instances is not None:
+        raise ValueError('"included_instances" and "exclude_instances"'
+                         'cannot be specified at the same time.')
+    if included_instances is not None:
+        instances = instances.filter(InstanceIds=included_instances)
+    elif exclude_instances:
+        included_instances = []
+        for inst in list(instances):
+            if inst.id not in exclude_instances:
+                included_instances.append(inst.id)
+        instances = instances.filter(InstanceIds=included_instances)
+    return instances
+
+
+def stop_instances(region: str,
+                   cluster_name: str,
+                   included_instances: Optional[List[str]] = None,
+                   exclude_instances: Optional[List[str]] = None) -> None:
     """See sky/provision/__init__.py"""
     ec2 = utils.create_resource('ec2', region=region)
     filters = [
@@ -335,10 +356,15 @@ def stop_instances(region: str, cluster_name: str) -> None:
         },
     ]
     # TODO(suquark): wait pending clusters?
-    ec2.instances.filter(Filters=filters).stop()
+    instances = _filter_instances(ec2, filters, included_instances,
+                                  exclude_instances)
+    instances.stop()
 
 
-def terminate_instances(region: str, cluster_name: str) -> None:
+def terminate_instances(region: str,
+                        cluster_name: str,
+                        included_instances: Optional[List[str]] = None,
+                        exclude_instances: Optional[List[str]] = None) -> None:
     """See sky/provision/__init__.py"""
     ec2 = utils.create_resource('ec2', region=region)
     filters = [
@@ -354,51 +380,9 @@ def terminate_instances(region: str, cluster_name: str) -> None:
     ]
     # TODO(suquark): wait pending clusters?
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Instance
-    ec2.instances.filter(Filters=filters).terminate()
-
-
-def _get_self_and_other_instances(states_filter: List[str]) -> Tuple[Any, Any]:
-    metadata = utils.get_self_instance_metadata()
-    region = metadata['region']
-    self_instance_id = metadata['instance_id']
-    ec2 = utils.create_resource('ec2', region=region)
-    self = ec2.Instance(self_instance_id)
-    tags = {}
-    for t in self.tags:
-        tags[t['Key']] = t['Value']
-    cluster_name = tags[TAG_RAY_CLUSTER_NAME]
-    filters = [
-        {
-            'Name': 'instance-state-name',
-            'Values': states_filter,
-        },
-        {
-            'Name': f'tag:{TAG_RAY_CLUSTER_NAME}',
-            'Values': [cluster_name],
-        },
-    ]
-    instances = ec2.instances.filter(Filters=filters)
-    other_ids = []
-    for inst in instances:
-        if inst.id != self_instance_id:
-            other_ids.append(inst.id)
-    others = instances.filter(InstanceIds=other_ids)
-    return self, others
-
-
-def stop_instances_with_self() -> None:
-    """See sky/provision/__init__.py"""
-    self, others = _get_self_and_other_instances(['pending', 'running'])
-    others.stop()
-    self.stop()
-
-
-def terminate_instances_with_self() -> None:
-    """See sky/provision/__init__.py"""
-    self, others = _get_self_and_other_instances(
-        ['pending', 'running', 'stopping', 'stopped'])
-    others.terminate()
-    self.terminate()
+    instances = _filter_instances(ec2, filters, included_instances,
+                                  exclude_instances)
+    instances.terminate()
 
 
 def wait_instances(region: str, cluster_name: str, state: str) -> None:
