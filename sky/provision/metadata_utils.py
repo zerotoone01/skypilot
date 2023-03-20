@@ -103,8 +103,7 @@ def generate_reflection_metadata(
         provision_metadata: common.ProvisionMetadata) -> pathlib.Path:
     """This function generates metadata for instances to 'reflect' its own
     configuration, including its cloud, region, head instance id etc.
-    The metadata is a dictionary containing these information and then
-    mount to instances."""
+    The metadata is then mounted to all instances."""
     cluster_metadata_dir = _get_cluster_metadata_dir(
         provision_metadata.cluster_name)
     path = cluster_metadata_dir / 'reflection.json'
@@ -114,9 +113,10 @@ def generate_reflection_metadata(
 
 
 def get_reflection_metadata() -> Optional[common.ProvisionMetadata]:
-    """This function attempts to open the metadata file located at
-    ~/.sky/metadata.json and returns its contents as a dictionary.
-    If the metadata file does not exist, it returns None."""
+    """This function attempts to load the 'reflection' metadata.
+    If the metadata file does not exist, it returns None.
+
+    See 'generate_reflection_metadata' for more information."""
     try:
         with open(os.path.expanduser(SKY_REMOTE_REFLECTION_METADATA_PATH)) as f:
             content = json.load(f)
