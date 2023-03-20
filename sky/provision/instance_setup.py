@@ -49,7 +49,8 @@ def _parallel_ssh_with_cache(func, cluster_name: str, stage_name: str,
                                                      **ssh_credentials)
             wrapper = metadata_utils.cache_func(cluster_name, instance_id,
                                                 stage_name, digest)
-            log_dir_abs = metadata_utils.get_log_dir(cluster_name, instance_id)
+            log_dir_abs = metadata_utils.get_instance_log_dir(
+                cluster_name, instance_id)
             log_path_abs = str(log_dir_abs / (stage_name + '.log'))
             results.append(
                 pool.submit(wrapper(func), runner, metadata, log_path_abs))

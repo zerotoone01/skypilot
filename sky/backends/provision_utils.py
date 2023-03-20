@@ -193,7 +193,7 @@ def teardown_cluster(cloud_name: str, region: str, cluster_name: str,
     """Deleting or stopping a cluster."""
     if terminate:
         provision.terminate_instances(cloud_name, region, cluster_name)
-        metadata_utils.remove_cluster_profile(cluster_name)
+        metadata_utils.remove_cluster_metadata(cluster_name)
     else:
         provision.stop_instances(cloud_name, region, cluster_name)
 
