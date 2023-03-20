@@ -98,7 +98,7 @@ def _bulk_provision(
                              'maximum retries.')
                 raise e
             sleep = backoff.current_backoff()
-            logger.info('Retrying launching in {:.1f} seconds.'.format(sleep))
+            logger.debug(f'Retrying launching in {sleep:.1f} seconds.')
             time.sleep(sleep)
 
     # 5 seconds to 180 seconds. We need backoff for e.g., rate limit per
