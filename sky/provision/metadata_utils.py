@@ -87,11 +87,11 @@ def generate_reflection_metadata(
     The metadata is a dictionary containing these information and then
     mount to instances."""
     name = provision_metadata.cluster_name
-    metadata = provision_metadata.json(indent=2)
+    metadata = provision_metadata.dict()
     (SKY_CLUSTER_PATH / name).mkdir(exist_ok=True, parents=True)
     path = SKY_CLUSTER_PATH / name / 'reflection.json'
     with open(path, 'w') as f:
-        json.dump(metadata, f)
+        json.dump(metadata, f, indent=2)
     return path
 
 
