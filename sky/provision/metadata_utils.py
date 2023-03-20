@@ -83,7 +83,9 @@ def get_instance_cache_dir(cluster_name: str, instance_id: str) -> pathlib.Path:
     does not exist, it is created."""
     instance_metadata_dir = _get_instance_metadata_dir(cluster_name,
                                                        instance_id)
-    return instance_metadata_dir / 'cache'
+    path = instance_metadata_dir / 'cache'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def get_instance_log_dir(cluster_name: str, instance_id: str) -> pathlib.Path:
@@ -92,7 +94,9 @@ def get_instance_log_dir(cluster_name: str, instance_id: str) -> pathlib.Path:
     directory does not exist, it is created."""
     instance_metadata_dir = _get_instance_metadata_dir(cluster_name,
                                                        instance_id)
-    return instance_metadata_dir / 'logs'
+    path = instance_metadata_dir / 'logs'
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def generate_reflection_metadata(
