@@ -7,6 +7,11 @@ import time
 import botocore
 from botocore import exceptions as boto_exceptions
 
+# We still have to depend on Ray logger, because currently
+# our logger does not support the same coloring schema as Ray.
+# For example, Ray can format the entire message yellow.
+from ray.autoscaler._private.cli_logger import cli_logger
+
 from sky import sky_logging
 from sky.provision import common
 from sky.provision.aws import utils
@@ -127,7 +132,7 @@ def _create_instances(ec2_fail_fast, cluster_name: str, node_config: Dict[str,
                 except boto_exceptions.ClientError as e:
                     if e.response['Error']['Code'] == 'RequestLimitExceeded':
                         time.sleep(backoff.current_backoff())
-                        logger.warning(
+                        cli_logger.warning(
                             'create_instances: RequestLimitExceeded, retrying.')
                         continue
                     raise
@@ -142,7 +147,7 @@ def _create_instances(ec2_fail_fast, cluster_name: str, node_config: Dict[str,
                     'Failed to launch instances. Max attempts exceeded.'
                 ) from exc
             else:
-                logger.warning(
+                cli_logger.warning(
                     f'create_instances: Attempt failed with {exc}, retrying.')
     assert False, 'This code should not be reachable'
 
@@ -271,8 +276,9 @@ def start_instances(region: str, cluster_name: str,
         if zone is None:
             zone = placement_zone
         elif zone != placement_zone:
-            logger.warning(f'Resumed instances are in zone {placement_zone}, '
-                           f'while previous instances are in zone {zone}.')
+            cli_logger.warning(
+                f'Resumed instances are in zone {placement_zone}, '
+                f'while previous instances are in zone {zone}.')
         to_start_count -= len(resumed_instances)
 
         if head_instance_id is None:
@@ -296,9 +302,9 @@ def start_instances(region: str, cluster_name: str,
         if zone is None:
             zone = placement_zone
         elif zone != placement_zone:
-            logger.warning('Newly created instances are in zone '
-                           f'{placement_zone}, '
-                           f'while previous instances are in zone {zone}.')
+            cli_logger.warning('Newly created instances are in zone '
+                               f'{placement_zone}, '
+                               f'while previous instances are in zone {zone}.')
 
         # NOTE: we only create worker tags for newly started nodes, because
         # the worker tag is a legacy feature, so we would not care about
@@ -453,9 +459,9 @@ def get_cluster_metadata(region: str,
             tags[t['Key']] = t['Value']
             if t['Key'] == TAG_SKYPILOT_HEAD_NODE and t['Value'] == '1':
                 if head_instance_id is not None:
-                    logger.warning('There are multiple head nodes in the '
-                                   'cluster. It is likely that something '
-                                   'goes wrong.')
+                    cli_logger.warning('There are multiple head nodes in the '
+                                       'cluster. It is likely that something '
+                                       'goes wrong.')
                 head_instance_id = inst.id
         # sort tags by key to support deterministic unit test stubbing
         tags = dict(sorted(tags.items(), key=lambda x: x[0]))
