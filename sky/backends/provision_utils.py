@@ -57,13 +57,8 @@ def _bulk_provision(
     else:
         logger.info(f'{style.BRIGHT}Launching on {cloud} '
                     f'{region_name}{style.RESET_ALL} ({zone_str})')
+
     start = time.time()
-
-    # 5 seconds to 180 seconds. We need backoff for e.g., rate limit per
-    # minute errors.
-    backoff = common_utils.Backoff(initial_backoff=5,
-                                   max_backoff_factor=180 // 5)
-
     try:
         with log_utils.safe_rich_status(
                 f'[bold cyan]Bootstrapping configurations for '
@@ -80,29 +75,20 @@ def _bulk_provision(
                      f'"{cluster_name}".')
         raise
 
-    for retry_cnt in range(_MAX_RETRY):
-        try:
-            with log_utils.safe_rich_status(
-                    f'[bold cyan]Starting instances for '
-                    f'[green]{cluster_name}[white] ...'):
-                provision_metadata = provision.start_instances(provider_name,
-                                                               region_name,
-                                                               cluster_name,
-                                                               config=config)
-            break
-        except Exception as e:  # pylint: disable=broad-except
-            logger.debug(f'Starting instances for "{cluster_name}" '
-                         f'failed. Stacktrace:\n{traceback.format_exc()}')
-            if retry_cnt >= _MAX_RETRY - 1:
-                logger.error(f'Failed to provision "{cluster_name}" after '
-                             'maximum retries.')
-                raise e
-            sleep = backoff.current_backoff()
-            logger.debug(f'Retrying launching in {sleep:.1f} seconds.')
-            time.sleep(sleep)
+    try:
+        with log_utils.safe_rich_status(f'[bold cyan]Starting instances for '
+                                        f'[green]{cluster_name}[white] ...'):
+            provision_metadata = provision.start_instances(provider_name,
+                                                           region_name,
+                                                           cluster_name,
+                                                           config=config)
+    except Exception as e:  # pylint: disable=broad-except
+        logger.debug(f'Starting instances for "{cluster_name}" '
+                     f'failed. Stacktrace:\n{traceback.format_exc()}')
+        logger.error(f'Failed to provision "{cluster_name}" after '
+                     'maximum retries.')
+        raise e
 
-    # 5 seconds to 180 seconds. We need backoff for e.g., rate limit per
-    # minute errors.
     backoff = common_utils.Backoff(initial_backoff=1, max_backoff_factor=3)
     logger.debug(f'Waiting "{cluster_name}" to be started...')
     with log_utils.safe_rich_status(
