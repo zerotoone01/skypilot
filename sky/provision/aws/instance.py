@@ -323,17 +323,17 @@ def start_instances(region: str, cluster_name: str,
 
 def _filter_instances(ec2, filters: List[Dict[str, Any]],
                       included_instances: Optional[List[str]],
-                      exclude_instances: Optional[List[str]]):
+                      excluded_instances: Optional[List[str]]):
     instances = ec2.instances.filter(Filters=filters)
-    if included_instances is not None and exclude_instances is not None:
+    if included_instances is not None and excluded_instances is not None:
         raise ValueError('"included_instances" and "exclude_instances"'
                          'cannot be specified at the same time.')
     if included_instances is not None:
         instances = instances.filter(InstanceIds=included_instances)
-    elif exclude_instances:
+    elif excluded_instances is not None:
         included_instances = []
         for inst in list(instances):
-            if inst.id not in exclude_instances:
+            if inst.id not in excluded_instances:
                 included_instances.append(inst.id)
         instances = instances.filter(InstanceIds=included_instances)
     return instances
@@ -342,7 +342,7 @@ def _filter_instances(ec2, filters: List[Dict[str, Any]],
 def stop_instances(region: str,
                    cluster_name: str,
                    included_instances: Optional[List[str]] = None,
-                   exclude_instances: Optional[List[str]] = None) -> None:
+                   excluded_instances: Optional[List[str]] = None) -> None:
     """See sky/provision/__init__.py"""
     ec2 = utils.create_resource('ec2', region=region)
     filters = [
@@ -357,14 +357,14 @@ def stop_instances(region: str,
     ]
     # TODO(suquark): wait pending clusters?
     instances = _filter_instances(ec2, filters, included_instances,
-                                  exclude_instances)
+                                  excluded_instances)
     instances.stop()
 
 
 def terminate_instances(region: str,
                         cluster_name: str,
                         included_instances: Optional[List[str]] = None,
-                        exclude_instances: Optional[List[str]] = None) -> None:
+                        excluded_instances: Optional[List[str]] = None) -> None:
     """See sky/provision/__init__.py"""
     ec2 = utils.create_resource('ec2', region=region)
     filters = [
@@ -381,7 +381,7 @@ def terminate_instances(region: str,
     # TODO(suquark): wait pending clusters?
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Instance
     instances = _filter_instances(ec2, filters, included_instances,
-                                  exclude_instances)
+                                  excluded_instances)
     instances.terminate()
 
 
