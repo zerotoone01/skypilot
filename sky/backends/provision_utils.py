@@ -404,6 +404,10 @@ def post_provision_setup(cloud_name: str, cluster_name: str, cluster_yaml: str,
     try:
         logger.addHandler(fh)
         logger.debug(_TITLE.format('System Setup After Provision'))
+        per_instance_log_dir = metadata_utils.get_instance_log_dir(
+            cluster_name, '*')
+        logger.debug(
+            f'For per-instance logs, see "{str(per_instance_log_dir)}".')
         return _post_provision_setup(cloud_name,
                                      cluster_name,
                                      cluster_yaml=cluster_yaml,
