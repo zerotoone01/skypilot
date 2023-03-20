@@ -165,9 +165,10 @@ def bulk_provision(
         return _bulk_provision(cloud, region, zones, cluster_name,
                                bootstrap_config)
     except Exception:  # pylint: disable=broad-except
-        logger.exception(f'Provision cluster {cluster_name} failed.')
-        logger.error('*** Failed provisioning the cluster. ***')
-
+        logger.error(
+            f'*** Failed provisioning the cluster ({cluster_name}). ***')
+        logger.debug(f'Starting instances for "{cluster_name}" '
+                     f'failed. Stacktrace:\n{traceback.format_exc()}')
         # If cluster was previously UP or STOPPED, stop it; otherwise
         # terminate.
         # FIXME(zongheng): terminating a potentially live cluster is
@@ -416,9 +417,12 @@ def post_provision_setup(cloud_name: str, cluster_name: str, cluster_yaml: str,
                                      provision_metadata=provision_metadata,
                                      custom_resource=custom_resource)
     except Exception:  # pylint: disable=broad-except
-        logger.exception('Post provision setup of cluster '
-                         f'{cluster_name} failed.')
-        raise
+        logger.error(
+            f'*** Failed setting up cluster {cluster_name} after provision. ***'
+        )
+        logger.debug(f'Stacktrace:\n{traceback.format_exc()}')
+        with ux_utils.print_exception_no_traceback():
+            raise
     finally:
         logger.removeHandler(fh)
         fh.close()
