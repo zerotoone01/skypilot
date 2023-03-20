@@ -64,14 +64,15 @@ def _bulk_provision(
     backoff = common_utils.Backoff(initial_backoff=5,
                                    max_backoff_factor=180 // 5)
 
-    # TODO(suquark): Should we just check the cluster status
-    #  if 'cluster_exists' is true? Then we can skip bootstrapping
-    #  etc if all nodes are ready. This is a known issue before.
-
     try:
         with log_utils.safe_rich_status(
                 f'[bold cyan]Bootstrapping configurations for '
                 f'[green]{cluster_name}[white] ...'):
+            # TODO(suquark): Should we cache the bootstrapped result?
+            #  Currently it is not necessary as bootstrapping takes
+            #  only ~3s, caching it seems over-engineering and could
+            #  cause other issues like the cache is not synced
+            #  with the cloud configuration.
             config = provision.bootstrap(provider_name, region_name,
                                          cluster_name, bootstrap_config)
     except Exception:
