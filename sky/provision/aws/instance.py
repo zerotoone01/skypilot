@@ -152,6 +152,23 @@ def _create_instances(ec2_fail_fast, cluster_name: str, node_config: Dict[str,
     assert False, 'This code should not be reachable'
 
 
+def _get_head_instance_id(instances: List) -> Optional[str]:
+    head_instance_id = None
+    head_node_markers = (
+        (TAG_SKYPILOT_HEAD_NODE, '1'),
+        (TAG_RAY_NODE_TYPE, 'head'),  # backward compat with Ray
+    )
+    for inst in instances:
+        for t in inst.tags:
+            if (t['Key'], t['Value']) in head_node_markers:
+                if head_instance_id is not None:
+                    cli_logger.warning('There are multiple head nodes in the '
+                                       'cluster. It is likely that something '
+                                       'goes wrong.')
+                head_instance_id = inst.id
+    return head_instance_id
+
+
 def start_instances(region: str, cluster_name: str,
                     config: common.InstanceConfig) -> common.ProvisionMetadata:
     """See sky/provision/__init__.py"""
@@ -177,14 +194,7 @@ def start_instances(region: str, cluster_name: str,
     ]
     exist_instances = list(ec2.instances.filter(Filters=filters))
     exist_instances.sort(key=lambda x: x.id)
-
-    for inst in exist_instances:
-        # TAG_SKYPILOT_HEAD_NODE
-        for t in inst.tags:
-            if ((t['Key'] == TAG_SKYPILOT_HEAD_NODE and t['Value'] == '1') or
-                (t['Key'] == TAG_RAY_NODE_TYPE and t['Value'] == 'head')):
-                head_instance_id = inst.id
-                break
+    head_instance_id = _get_head_instance_id(exist_instances)
 
     pending_instances = []
     running_instances = []
@@ -439,8 +449,6 @@ def wait_instances(region: str, cluster_name: str, state: str) -> None:
 def get_cluster_metadata(region: str,
                          cluster_name: str) -> common.ClusterMetadata:
     """See sky/provision/__init__.py"""
-    instances = {}
-    head_instance_id = None
     ec2 = utils.create_resource('ec2', region=region)
     filters = [
         {
@@ -452,24 +460,19 @@ def get_cluster_metadata(region: str,
             'Values': [cluster_name],
         },
     ]
-    ec2_instances = ec2.instances.filter(Filters=filters)
-    for inst in ec2_instances:
-        tags = {}
-        for t in inst.tags:
-            tags[t['Key']] = t['Value']
-            if t['Key'] == TAG_SKYPILOT_HEAD_NODE and t['Value'] == '1':
-                if head_instance_id is not None:
-                    cli_logger.warning('There are multiple head nodes in the '
-                                       'cluster. It is likely that something '
-                                       'goes wrong.')
-                head_instance_id = inst.id
+    running_instances = list(ec2.instances.filter(Filters=filters))
+    head_instance_id = _get_head_instance_id(running_instances)
+
+    instances = {}
+    for inst in running_instances:
+        tags = [(t['Key'], t['Value']) for t in inst.tags]
         # sort tags by key to support deterministic unit test stubbing
-        tags = dict(sorted(tags.items(), key=lambda x: x[0]))
+        tags.sort(key=lambda x: x[0])
         instances[inst.id] = common.InstanceMetadata(
             instance_id=inst.id,
             private_ip=inst.private_ip_address,
             public_ip=inst.public_ip_address,
-            tags=tags,
+            tags=dict(tags),
         )
     instances = dict(sorted(instances.items(), key=lambda x: x[0]))
     return common.ClusterMetadata(
