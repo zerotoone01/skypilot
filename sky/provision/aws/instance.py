@@ -162,10 +162,13 @@ def _get_head_instance_id(instances: List) -> Optional[str]:
         for t in inst.tags:
             if (t['Key'], t['Value']) in head_node_markers:
                 if head_instance_id is not None:
-                    cli_logger.warning('There are multiple head nodes in the '
-                                       'cluster. It is likely that something '
-                                       'goes wrong.')
+                    cli_logger.warning(
+                        'There are multiple head nodes in the cluster '
+                        f'(current head instance id: {head_instance_id}, '
+                        f'newly discovered id: {inst.id}). It is likely '
+                        f'that something goes wrong.')
                 head_instance_id = inst.id
+                break
     return head_instance_id
 
 
@@ -176,7 +179,6 @@ def start_instances(region: str, cluster_name: str,
 
     region = ec2.meta.client.meta.region_name
     zone = None
-    head_instance_id = None
     resumed_instance_ids: List[str] = []
     created_instance_ids: List[str] = []
 
