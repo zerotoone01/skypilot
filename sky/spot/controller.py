@@ -120,6 +120,12 @@ class SpotController:
                     self._task.num_nodes == 1):
                 continue
 
+            if job_status.is_terminal():
+                logger.info(
+                    'Sleeping for 2 minutes to allow the cloud provider '
+                    'to update the cluster status...')
+                time.sleep(120)
+
             # Pull the actual cluster status from the cloud provider to
             # determine whether the cluster is preempted.
             (cluster_status,
