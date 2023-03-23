@@ -120,7 +120,7 @@ class SpotController:
                     self._task.num_nodes == 1):
                 continue
 
-            if job_status.is_terminal():
+            if job_status is None or job_status.is_terminal():
                 logger.info(
                     'Sleeping for 2 minutes to allow the cloud provider '
                     'to update the cluster status...')
