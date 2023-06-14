@@ -17,6 +17,7 @@ import textwrap
 import time
 import typing
 from typing import Dict, Iterable, List, Optional, Tuple, Union, Set
+from typing_extensions import Literal
 
 import colorama
 import filelock
@@ -1979,7 +1980,7 @@ class RetryingVmProvisioner(object):
         return config_dict
 
 
-class CloudVmRayResourceHandle(backends.backend.ResourceHandle):
+class CloudVmRayResourceHandle(backends.ResourceHandle):
     """A pickle-able tuple of:
 
     - (required) Cluster name.
@@ -3579,6 +3580,44 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
         logger.debug(f'Failed to check if cluster is autostopping: {stderr}')
         return False
 
+    @typing.overload
+    def run_on_head(
+        self,
+        handle: CloudVmRayResourceHandle,
+        cmd: str,
+        *,
+        port_forward: Optional[List[int]] = None,
+        log_path: str = '/dev/null',
+        stream_logs: bool = False,
+        ssh_mode: command_runner.SshMode = command_runner.SshMode.
+        NON_INTERACTIVE,
+        under_remote_workdir: bool = False,
+        require_outputs: Literal[False] = False,
+        separate_stderr: bool = False,
+        process_stream: bool = True,
+        **kwargs,
+    ) -> int:
+        ...
+
+    @typing.overload
+    def run_on_head(
+        self,
+        handle: CloudVmRayResourceHandle,
+        cmd: str,
+        *,
+        port_forward: Optional[List[int]] = None,
+        log_path: str = '/dev/null',
+        stream_logs: bool = False,
+        ssh_mode: command_runner.SshMode = command_runner.SshMode.
+        NON_INTERACTIVE,
+        under_remote_workdir: bool = False,
+        require_outputs: Literal[True] = True,
+        separate_stderr: bool = False,
+        process_stream: bool = True,
+        **kwargs,
+    ) -> Tuple[int, str, str]:
+        ...
+
     # TODO(zhwu): Refactor this to a CommandRunner class, so different backends
     # can support its own command runner.
     @timeline.event
@@ -3619,6 +3658,9 @@ class CloudVmRayBackend(backends.Backend['CloudVmRayResourceHandle']):
             process_stream: Whether to post-process the stdout/stderr of the
                 command, such as replacing or skipping lines on the fly. If
                 enabled, lines are printed only when '\r' or '\n' is found.
+
+        Returns:
+            TODO: Fill this in.
         """
         head_ip = backend_utils.get_head_ip(handle, _FETCH_IP_MAX_ATTEMPTS)
         ssh_credentials = backend_utils.ssh_credential_from_yaml(

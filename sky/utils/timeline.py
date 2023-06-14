@@ -4,7 +4,8 @@ The timeline follows the trace event format defined here:
 https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview
 """  # pylint: disable=line-too-long
 import functools
-from typing import Optional, Union, Callable
+from typing import Callable, Optional, TypeVar, Union
+from typing_extensions import ParamSpec
 
 import atexit
 import json
@@ -73,7 +74,12 @@ class Event:
         self.end()
 
 
-def event(name_or_fn: Union[str, Callable], message: Optional[str] = None):
+_P = ParamSpec('_P')
+_T = TypeVar('_T')
+
+
+def event(name_or_fn: Callable[_P, _T],
+          message: Optional[str] = None) -> Callable[_P, _T]:
     return common_utils.make_decorator(Event, name_or_fn, message=message)
 
 

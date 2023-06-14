@@ -156,8 +156,10 @@ def run_with_log(
         ray_job_id: The id for a ray job.
         use_sudo: Whether to use sudo to create log_path.
 
-    Returns the returncode or returncode, stdout and stderr of the command.
-      Note that the stdout and stderr is already decoded.
+    Returns:
+       If require_outputs, (returncode, stdout, stderr) of the command.
+       Otherwise just the returncode.  Note that the stdout and stderr is
+       already decoded.
     """
     assert process_stream or not require_outputs, (
         process_stream, require_outputs,

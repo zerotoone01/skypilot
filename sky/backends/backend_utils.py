@@ -2299,7 +2299,7 @@ def refresh_cluster_status_handle(
     force_refresh: bool = False,
     acquire_per_cluster_status_lock: bool = True,
 ) -> Tuple[Optional[global_user_state.ClusterStatus],
-           Optional[backends.ResourceHandle]]:
+           Optional[backends.CloudVmRayResourceHandle]]:
     """Refresh the cluster, and return the possibly updated status and handle.
 
     This is a wrapper of refresh_cluster_record, which returns the status and

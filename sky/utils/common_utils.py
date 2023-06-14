@@ -12,13 +12,15 @@ import re
 import socket
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 import uuid
 import yaml
 
 import colorama
 
 from sky import sky_logging
+
+_FuncT = TypeVar('_FuncT', bound=Callable[..., Any])
 
 _USER_HASH_FILE = os.path.expanduser('~/.sky/user_hash')
 USER_HASH_LENGTH = 8
@@ -209,7 +211,8 @@ def dump_yaml_str(config):
                      default_flow_style=False)
 
 
-def make_decorator(cls, name_or_fn: Union[str, Callable], **ctx_kwargs):
+def make_decorator(cls, name_or_fn: Union[str, Callable],
+                   **ctx_kwargs) -> _FuncT:
     """Make the cls a decorator.
 
     class cls:
@@ -224,12 +227,14 @@ def make_decorator(cls, name_or_fn: Union[str, Callable], **ctx_kwargs):
         name_or_fn: The name of the event or the function to be wrapped.
         message: The message attached to the event.
     """
+    # Typing:
+    # https://mypy.readthedocs.io/en/stable/generics.html#decorator-factories
     if isinstance(name_or_fn, str):
 
         def _wrapper(f):
 
             @functools.wraps(f)
-            def _record(*args, **kwargs):
+            def _record(*args, **kwargs) -> Callable[[_FuncT], _FuncT]:
                 nonlocal name_or_fn
                 with cls(name_or_fn, **ctx_kwargs):
                     return f(*args, **kwargs)

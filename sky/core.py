@@ -163,7 +163,6 @@ def _start(
     down: bool = False,  # pylint: disable=redefined-outer-name
     force: bool = False,
 ) -> backends.CloudVmRayResourceHandle:
-
     cluster_status, handle = backend_utils.refresh_cluster_status_handle(
         cluster_name)
     if handle is None:
@@ -207,6 +206,7 @@ def _start(
                                stream_logs=True,
                                cluster_name=cluster_name,
                                retry_until_up=retry_until_up)
+    assert handle is not None, 'dryrun==False, so handle should be returned.'
     if idle_minutes_to_autostop is not None:
         backend.set_autostop(handle, idle_minutes_to_autostop, down=down)
     return handle
@@ -293,8 +293,9 @@ def stop(cluster_name: str, purge: bool = False) -> None:
     Raises:
         ValueError: the specified cluster does not exist.
         RuntimeError: failed to stop the cluster.
-        sky.exceptions.NotSupportedError: if the specified cluster is a spot
-          cluster, or a TPU VM Pod cluster, or the managed spot controller.
+          sky.exceptions.NotSupportedError: if the specified cluster is a spot
+          cluster, or a TPU VM Pod cluster, or the managed spot controller, or
+          the backend is not CloudVmRayBackend.
     """
     if cluster_name in backend_utils.SKY_RESERVED_CLUSTER_NAMES:
         raise exceptions.NotSupportedError(
@@ -315,6 +316,8 @@ def stop(cluster_name: str, purge: bool = False) -> None:
                 f'Stopping cluster {cluster_name!r} with TPU VM Pod '
                 'is not supported.')
         # Check cloud supports stopping instances
+        assert handle.launched_resources.cloud is not None, (cluster_name,
+                                                             handle)
         cloud = handle.launched_resources.cloud
         cloud.check_features_are_supported(
             {clouds.CloudImplementationFeatures.STOP})
@@ -328,8 +331,12 @@ def stop(cluster_name: str, purge: bool = False) -> None:
                 'disks will be lost.\n'
                 '  To terminate the cluster instead, run: '
                 f'{colorama.Style.BRIGHT}sky down {cluster_name}')
-    usage_lib.record_cluster_name_for_current_operation(cluster_name)
-    backend.teardown(handle, terminate=False, purge=purge)
+        usage_lib.record_cluster_name_for_current_operation(cluster_name)
+        backend.teardown(handle, terminate=False, purge=purge)
+    else:
+        # We don't actually have other backends at the moment.
+        raise exceptions.NotSupportedError(
+            f'Backend {backend.NAME} does not support stopping.')
 
 
 @usage_lib.entrypoint
@@ -450,6 +457,7 @@ def autostop(
 
     # Check autostop is implemented for cloud
     cloud = handle.launched_resources.cloud
+    assert cloud is not None, (cluster_name, handle)
     if not down and idle_minutes >= 0:
         cloud.check_features_are_supported(
             {clouds.CloudImplementationFeatures.AUTOSTOP})
