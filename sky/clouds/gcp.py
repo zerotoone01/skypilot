@@ -29,9 +29,6 @@ DEFAULT_GCP_APPLICATION_CREDENTIAL_PATH: str = os.path.expanduser(
 # TODO(wei-lin): config_default may not be the config in use.
 # See: https://github.com/skypilot-org/skypilot/pull/1539
 GCP_CONFIG_PATH = '~/.config/gcloud/configurations/config_default'
-# Do not place the backup under the gcloud config directory, as ray
-# autoscaler can overwrite that directory on the remote nodes.
-GCP_CONFIG_SKY_BACKUP_PATH = '~/.sky/.sky_gcp_config_default'
 
 # A list of permissions required to run SkyPilot on GCP.
 # This is not a complete list but still useful to check first
@@ -66,7 +63,6 @@ GOOGLE_SDK_INSTALLATION_COMMAND: str = f'pushd /tmp &>/dev/null && \
     ~/google-cloud-sdk/install.sh -q >> {_GCLOUD_INSTALLATION_LOG} 2>&1 && \
     echo "source ~/google-cloud-sdk/path.bash.inc > /dev/null 2>&1" >> ~/.bashrc && \
     source ~/google-cloud-sdk/path.bash.inc >> {_GCLOUD_INSTALLATION_LOG} 2>&1; }}; }} && \
-    {{ cp {GCP_CONFIG_SKY_BACKUP_PATH} {GCP_CONFIG_PATH} > /dev/null 2>&1 || true; }} && \
     popd &>/dev/null'
 
 # TODO(zhwu): Move the default AMI size to the catalog instead.
@@ -589,21 +585,6 @@ class GCP(clouds.Cloud):
         return True, None
 
     def get_credential_file_mounts(self) -> Dict[str, str]:
-        # Create a backup of the config_default file, as the original file can
-        # be modified on the remote cluster by ray causing authentication
-        # problems. The backup file will be updated to the remote cluster
-        # whenever the original file is not empty and will be applied
-        # appropriately on the remote cluster when neccessary.
-        if (os.path.exists(os.path.expanduser(GCP_CONFIG_PATH)) and
-                os.path.getsize(os.path.expanduser(GCP_CONFIG_PATH)) > 0):
-            subprocess.run(f'cp {GCP_CONFIG_PATH} {GCP_CONFIG_SKY_BACKUP_PATH}',
-                           shell=True,
-                           check=True)
-        elif not os.path.exists(os.path.expanduser(GCP_CONFIG_SKY_BACKUP_PATH)):
-            raise RuntimeError(
-                'GCP credential file is empty. Please make sure you '
-                'have run: gcloud init')
-
         # Excluding the symlink to the python executable created by the gcp
         # credential, which causes problem for ray up multiple nodes, tracked
         # in #494, #496, #483.
@@ -611,7 +592,6 @@ class GCP(clouds.Cloud):
             f'~/.config/gcloud/{filename}': f'~/.config/gcloud/{filename}'
             for filename in _CREDENTIAL_FILES
         }
-        credentials[GCP_CONFIG_SKY_BACKUP_PATH] = GCP_CONFIG_SKY_BACKUP_PATH
         return credentials
 
     @classmethod

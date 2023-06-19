@@ -378,14 +378,18 @@ def _configure_iam_role(config, crm, iam):
         # account is limited by the IAM rights specified below.
         "scopes": ["https://www.googleapis.com/auth/cloud-platform"],
     }
+    node_configs = config['available_node_types']
     if _is_head_node_a_tpu(config):
         # SKY: The API for TPU VM is slightly different from normal compute instances.
         # See https://cloud.google.com/tpu/docs/reference/rest/v2alpha1/projects.locations.nodes#Node
         account_dict["scope"] = account_dict["scopes"]
         account_dict.pop("scopes")
-        config["head_node"]["serviceAccount"] = account_dict
+        for node_type in config['available_node_types']:
+            node_configs[node_type]['node_config']['serviceAccount'] = account_dict
     else:
-        config["head_node"]["serviceAccounts"] = [account_dict]
+        for node_type in config['available_node_types']:
+            node_configs[node_type]['node_config']['serviceAccounts'] = [account_dict]
+
 
     return config
 

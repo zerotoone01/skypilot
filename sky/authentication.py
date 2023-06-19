@@ -214,33 +214,10 @@ def setup_gcp_authentication(config: Dict[str, Any]) -> Dict[str, Any]:
                 logger.debug('Failed to parse gcloud os-login profile.\n'
                              f'{common_utils.format_exception(e)}')
                 pass
-
+        
         if os_login_username is None:
-            # As a fallback, read the account information from the credential
-            # file. This works most of the time, but fails if the user's
-            # os-login username is not a straightforward translation of their
-            # email address, for example because their email address changed
-            # within their google workspace after the os-login credentials
-            # were established.
-            config_path = os.path.expanduser(clouds.gcp.GCP_CONFIG_PATH)
-            sky_backup_config_path = os.path.expanduser(
-                clouds.gcp.GCP_CONFIG_SKY_BACKUP_PATH)
-            assert os.path.exists(sky_backup_config_path), (
-                'GCP credential backup file '
-                f'{sky_backup_config_path!r} does not exist.')
-
-            with open(sky_backup_config_path, 'r') as infile:
-                for line in infile:
-                    if line.startswith('account'):
-                        account = line.split('=')[1].strip()
-                        break
-                else:
-                    with ux_utils.print_exception_no_traceback():
-                        raise RuntimeError(
-                            'GCP authentication failed, as the oslogin is '
-                            f'enabled but the file {config_path} does not '
-                            'contain the account information.')
-            os_login_username = account.replace('@', '_').replace('.', '_')
+            raise RuntimeError('Failed to get os-login username.')
+        
         config['auth']['ssh_user'] = os_login_username
 
         # Add ssh key to GCP with oslogin
