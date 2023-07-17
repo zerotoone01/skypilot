@@ -20,7 +20,14 @@ def get_resources_schema():
                 'case_insensitive_enum': list(cloud.CLOUD_REGISTRY.keys())
             },
             'region': {
-                'type': 'string',
+                'anyOf': [{
+                    'type': 'string',
+                }, {
+                    'type': 'array',
+                    'items': {
+                        'type': 'string',
+                    },
+                }],
             },
             'zone': {
                 'type': 'string',

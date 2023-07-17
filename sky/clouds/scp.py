@@ -6,7 +6,7 @@ to access the SCP catalog and check credentials for the SCP access.
 
 import json
 import typing
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 from sky import clouds
 from sky import status_lib
@@ -65,7 +65,7 @@ class SCP(clouds.Cloud):
     @classmethod
     def regions_with_offering(cls, instance_type: Optional[str],
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[clouds.Region]:
 
         del accelerators, zone  # unused
@@ -79,7 +79,11 @@ class SCP(clouds.Cloud):
                 instance_type, use_spot, 'scp')
 
         if region is not None:
-            regions = [r for r in regions if r.name == region]
+            if isinstance(region, str):
+                regions = [r for r in regions if r.name == region]
+            else:
+                # region is a list of regions.
+                regions = [r for r in regions if r.name in region]
         return regions
 
     @classmethod

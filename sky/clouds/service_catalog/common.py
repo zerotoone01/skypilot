@@ -3,7 +3,7 @@ import ast
 import hashlib
 import os
 import time
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import difflib
 import filelock
@@ -335,10 +335,15 @@ def _filter_with_mem(df: pd.DataFrame,
         return df[df['MemoryGiB'] == memory]
 
 
-def _filter_region_zone(df: pd.DataFrame, region: Optional[str],
+def _filter_region_zone(df: pd.DataFrame, region: Union[None, str, List[str]],
                         zone: Optional[str]) -> pd.DataFrame:
     if region is not None:
-        df = df[df['Region'].str.lower() == region.lower()]
+        if isinstance(region, str):
+            df = df[df['Region'].str.lower() == region.lower()]
+        else:
+            # region is a list of regions.
+            df = df[df['Region'].str.lower().isin(
+                [r.lower() for r in region])]
     if zone is not None:
         df = df[df['AvailabilityZone'].str.lower() == zone.lower()]
     return df

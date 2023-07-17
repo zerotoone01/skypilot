@@ -3,7 +3,7 @@ import os
 import yaml
 import json
 import typing
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 from sky import clouds
 from sky import sky_logging
@@ -47,7 +47,7 @@ class IBM(clouds.Cloud):
     @classmethod
     def regions_with_offering(cls, instance_type: str,
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[clouds.Region]:
         del accelerators  # unused
         if use_spot:
@@ -56,7 +56,11 @@ class IBM(clouds.Cloud):
             instance_type, use_spot, 'ibm')
 
         if region is not None:
-            regions = [r for r in regions if r.name == region]
+            if isinstance(region, str):
+                regions = [r for r in regions if r.name == region]
+            else:
+                # region is a list of regions.
+                regions = [r for r in regions if r.name in region]
         if zone is not None:
             for r in regions:
                 assert r.zones is not None, r

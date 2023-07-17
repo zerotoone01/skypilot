@@ -45,7 +45,7 @@ class Resources:
         accelerator_args: Optional[Dict[str, str]] = None,
         use_spot: Optional[bool] = None,
         spot_recovery: Optional[str] = None,
-        region: Optional[str] = None,
+        region: Union[None, str, List[str]] = None,
         zone: Optional[str] = None,
         image_id: Union[Dict[str, str], str, None] = None,
         disk_size: Optional[int] = None,
@@ -94,7 +94,7 @@ class Resources:
             spot to recover the cluster from preemption. Refer to
             `recovery_strategy module <https://github.com/skypilot-org/skypilot/blob/master/sky/spot/recovery_strategy.py>`__ # pylint: disable=line-too-long
             for more details.
-          region: the region to use.
+          region: the region(s) to use.
           zone: the zone to use.
           image_id: the image ID to use. If a str, must be a string
             of the image id from the cloud, such as AWS:
@@ -117,7 +117,7 @@ class Resources:
         """
         self._version = self._VERSION
         self._cloud = cloud
-        self._region: Optional[str] = None
+        self._region: Union[None, str, List[str]] = None
         self._zone: Optional[str] = None
         self._set_region_zone(region, zone)
 
@@ -480,20 +480,39 @@ class Resources:
         assert self.is_launchable(), self
         return self.cloud.need_cleanup_after_preemption(self)
 
-    def _set_region_zone(self, region: Optional[str],
+    def _set_region_zone(self, region: Union[None, str, List[str]],
                          zone: Optional[str]) -> None:
         if region is None and zone is None:
+            # No region or zone is specified.
             return
+
+        if region is not None and not region:
+            # Region must not be an empty string or list.
+            with ux_utils.print_exception_no_traceback():
+                raise ValueError('Empty region is specified.')
 
         if self._cloud is None:
             with ux_utils.print_exception_no_traceback():
                 raise ValueError(
                     'Cloud must be specified when region/zone are specified.')
 
-        # Validate whether region and zone exist in the catalog, and set the
-        # region if zone is specified.
-        self._region, self._zone = self._cloud.validate_region_zone(
-            region, zone)
+        if isinstance(region, list):
+            if zone is not None:
+                with ux_utils.print_exception_no_traceback():
+                    raise ValueError(
+                        'When region is a list, zone must be None.')
+            # The region must not include duplicates.
+            if len(region) != len(set(region)):
+                with ux_utils.print_exception_no_traceback():
+                    raise ValueError(
+                        f'Region {region} must not include duplicates.')
+            for r in region:
+                self._cloud.validate_region_zone(r, zone=None)
+            self._region = region
+        else:
+            # Validate whether region and zone exist in the catalog, and set the
+            # region if zone is specified.
+            self._region, self._zone = self._cloud.validate_region_zone(region, zone)
 
     def get_valid_regions_for_launchable(self) -> List[clouds.Region]:
         """Returns a set of `Region`s that can provision this Resources.

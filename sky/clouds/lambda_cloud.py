@@ -2,7 +2,7 @@
 import json
 import requests
 import typing
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 from sky import clouds
 from sky import exceptions
@@ -51,7 +51,7 @@ class Lambda(clouds.Cloud):
     @classmethod
     def regions_with_offering(cls, instance_type: str,
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[clouds.Region]:
         assert zone is None, 'Lambda does not support zones.'
         del accelerators, zone  # unused
@@ -61,7 +61,11 @@ class Lambda(clouds.Cloud):
             instance_type, use_spot, 'lambda')
 
         if region is not None:
-            regions = [r for r in regions if r.name == region]
+            if isinstance(region, str):
+                regions = [r for r in regions if r.name == region]
+            else:
+                # region is a list of regions.
+                regions = [r for r in regions if r.name in region]
         return regions
 
     @classmethod

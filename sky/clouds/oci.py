@@ -10,7 +10,7 @@ import os
 import json
 import typing
 import logging
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 from sky import clouds
 from sky import exceptions
@@ -57,7 +57,7 @@ class OCI(clouds.Cloud):
     @classmethod
     def regions_with_offering(cls, instance_type: str,
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[clouds.Region]:
         del accelerators  # unused
 
@@ -65,7 +65,11 @@ class OCI(clouds.Cloud):
             instance_type, use_spot, 'oci')
 
         if region is not None:
-            regions = [r for r in regions if r.name == region]
+            if isinstance(region, str):
+                regions = [r for r in regions if r.name == region]
+            else:
+                # region is a list of regions.
+                regions = [r for r in regions if r.name in region]
         if zone is not None:
             for r in regions:
                 assert r.zones is not None, r

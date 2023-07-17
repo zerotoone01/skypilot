@@ -3,7 +3,7 @@ import collections
 import enum
 import re
 import typing
-from typing import Dict, Iterator, List, Optional, Set, Tuple, Type
+from typing import Dict, Iterator, List, Optional, Set, Tuple, Type, Union
 
 from sky import exceptions
 from sky.clouds import service_catalog
@@ -106,7 +106,7 @@ class Cloud:
     @classmethod
     def regions_with_offering(cls, instance_type: str,
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[Region]:
         """Returns the regions that offer the specified resources.
 

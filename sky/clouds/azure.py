@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import typing
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import colorama
 
@@ -163,7 +163,7 @@ class Azure(clouds.Cloud):
     @classmethod
     def regions_with_offering(cls, instance_type: str,
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[clouds.Region]:
         del accelerators  # unused
         assert zone is None, 'Azure does not support zones'
@@ -171,7 +171,11 @@ class Azure(clouds.Cloud):
             instance_type, use_spot, 'azure')
 
         if region is not None:
-            regions = [r for r in regions if r.name == region]
+            if isinstance(region, str):
+                regions = [r for r in regions if r.name == region]
+            else:
+                # region is a list of regions.
+                regions = [r for r in regions if r.name in region]
         return regions
 
     @classmethod

@@ -5,7 +5,7 @@ import os
 import subprocess
 import time
 import typing
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 from sky import clouds
 from sky import exceptions
@@ -154,7 +154,7 @@ class GCP(clouds.Cloud):
     @classmethod
     def regions_with_offering(cls, instance_type: str,
                               accelerators: Optional[Dict[str, int]],
-                              use_spot: bool, region: Optional[str],
+                              use_spot: bool, region: Union[None, str, List[str]],
                               zone: Optional[str]) -> List[clouds.Region]:
         if accelerators is None:
             regions = service_catalog.get_region_zones_for_instance_type(
@@ -190,7 +190,11 @@ class GCP(clouds.Cloud):
                         break
 
         if region is not None:
-            regions = [r for r in regions if r.name == region]
+            if isinstance(region, str):
+                regions = [r for r in regions if r.name == region]
+            else:
+                # region is a list of regions.
+                regions = [r for r in regions if r.name in region]
         if zone is not None:
             for r in regions:
                 assert r.zones is not None, r
