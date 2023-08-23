@@ -9,7 +9,7 @@ import logging
 import textwrap
 import time
 from distutils import version
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import botocore
 import boto3
@@ -18,6 +18,7 @@ from ray.autoscaler._private.cli_logger import cf, cli_logger
 
 from sky import authentication
 from sky import sky_logging
+from sky.adaptors import aws
 from sky.provision.aws import utils
 from sky.provision import common
 
@@ -39,7 +40,17 @@ assert version.StrictVersion(boto3.__version__) >= version.StrictVersion(
 logging.getLogger('botocore').setLevel(logging.WARNING)
 
 
-def bootstrap(region: str, cluster_name: str,
+def _skypilot_log_error_and_exit_for_failover(error: str) -> None:
+    """Logs an message then raises a specific RuntimeError to trigger failover.
+
+    Mainly used for handling VPC/subnet errors before nodes are launched.
+    """
+    # NOTE: keep. The backend looks for this to know no nodes are launched.
+    prefix = "SKYPILOT_ERROR_NO_NODES_LAUNCHED: "
+    raise RuntimeError(prefix + error)
+
+
+def bootstrap_instances(region: str, cluster_name: str,
               config: common.InstanceConfig) -> common.InstanceConfig:
     """See sky/provision/__init__.py"""
     # create a copy of the input config to modify
@@ -60,14 +71,14 @@ def bootstrap(region: str, cluster_name: str,
     # The head node needs to have an IAM role that allows it to create further
     # EC2 instances.
     if 'IamInstanceProfile' not in node_cfg:
-        iam = utils.create_resource('iam', region, **aws_credentials)
+        iam = aws.resource('iam', region_name=region, **aws_credentials)
         node_cfg['IamInstanceProfile'] = _configure_iam_role(iam)
 
     # Configure SSH access, using an existing key pair if possible.
     node_cfg['UserData'] = _configure_ssh_keypair(
         config.authentication_config['ssh_user'])
 
-    ec2 = utils.create_resource('ec2', region, **aws_credentials)
+    ec2 = aws.resource('ec2', region_name=region, **aws_credentials)
 
     if subnet_ids is not None:
         subnets, vpc_id = _validate_subnet(ec2, subnet_ids, security_group_ids)
@@ -85,6 +96,9 @@ def bootstrap(region: str, cluster_name: str,
     # Cluster workers should be in a security group that permits traffic within
     # the group, and also SSH access from outside.
     if security_group_ids is None:
+        start_time = time.time()
+        logger.info('Creating or updating security groups...')
+
         # Generate the name of the security group we're looking for...
         security_group_config = config.provider_config.get('security_group', {})
         expected_sg_name = security_group_config.get(
@@ -95,7 +109,11 @@ def bootstrap(region: str, cluster_name: str,
             extended_ip_rules = []
         security_group_ids = _configure_security_group(ec2, vpc_id,
                                                        expected_sg_name,
+                                                       config.provider_config.get("ports", []),
                                                        extended_ip_rules)
+        end_time = time.time()
+        elapsed = end_time - start_time
+        logger.info(f'Security groups created or updated in {elapsed:.5f} seconds.')
 
     # store updated subnet and security group configs in node config
     # NOTE: "SubnetIds" is not a real config key for AWS instance.
@@ -106,7 +124,7 @@ def bootstrap(region: str, cluster_name: str,
     # NOTE(skypilot): skypilot uses the default AMIs in aws.py.
     node_ami = config.node_config.get('ImageId')
     if not node_ami:
-        raise RuntimeError(
+        _skypilot_log_error_and_exit_for_failover(
             'No ImageId found in the node_config. '
             'ImageId will need to be set manually in your cluster config.')
 
@@ -319,7 +337,7 @@ def _usable_subnet_ids(
         raise exc
 
     if not subnets:
-        raise RuntimeError(
+        _skypilot_log_error_and_exit_for_failover(
             'No usable subnets found, try '
             'manually creating an instance in your specified region to '
             'populate the list of subnets and trying this again. '
@@ -327,7 +345,7 @@ def _usable_subnet_ids(
             'on instance launch unless you set `use_internal_ips: true` in '
             'the `provider` config.')
     elif _are_user_subnets_pruned(subnets):
-        raise RuntimeError(f'The specified subnets are not '
+        _skypilot_log_error_and_exit_for_failover(f'The specified subnets are not '
                            f'usable: {_get_pruned_subnets(subnets)}')
 
     if azs is not None:
@@ -337,7 +355,7 @@ def _usable_subnet_ids(
             for s in subnets if s.availability_zone == az
         ]
         if not subnets:
-            raise RuntimeError(
+            _skypilot_log_error_and_exit_for_failover(
                 f'No usable subnets matching availability zone {azs} found. '
                 'Choose a different availability zone or try manually '
                 'creating an instance in your specified region to populate '
@@ -347,7 +365,7 @@ def _usable_subnet_ids(
                 '(2) does not assign public IPs (`map_public_ip_on_launch` '
                 'is False).')
         elif _are_user_subnets_pruned(subnets):
-            raise RuntimeError(
+            _skypilot_log_error_and_exit_for_failover(
                 f'MISMATCH between specified subnets and Availability Zones! '
                 'The following Availability Zones were specified in the '
                 f'`provider section`: {azs}. The following subnets '
@@ -366,7 +384,7 @@ def _usable_subnet_ids(
             s.subnet_id: s.vpc_id
             for s in user_specified_subnets  # type: ignore
         }
-        raise RuntimeError(
+        _skypilot_log_error_and_exit_for_failover(
             'Subnets specified in more than one VPC! '
             'Please ensure that all subnets share the same VPC and retry your '
             f'request. Subnet VPCs: {subnet_vpcs}')
@@ -407,10 +425,10 @@ def _get_vpc_id_by_name(ec2, vpc_name: str, region: str) -> str:
     filters = [{'Name': 'tag:Name', 'Values': [vpc_name]}]
     vpcs = list(ec2.vpcs.filter(Filters=filters))
     if not vpcs:
-        raise RuntimeError(f'No VPC with name {vpc_name!r} is found in '
+        _skypilot_log_error_and_exit_for_failover(f'No VPC with name {vpc_name!r} is found in '
                            f'{region}. To fix: specify a correct VPC name.')
     elif len(vpcs) > 1:
-        raise RuntimeError(
+        _skypilot_log_error_and_exit_for_failover(
             f'Multiple VPCs with name {vpc_name!r} '
             f'found in {region}: {vpcs}. '
             'It is ambiguous as to which VPC to use. To fix: specify a '
@@ -460,12 +478,34 @@ def _create_subnet(ec2, security_group_ids: List[str], region: str,
     return subnets, vpc_id
 
 
-def _configure_security_group(ec2, vpc_id: str, expected_sg_name: str,
+def _retrieve_user_specified_rules(ports):
+    rules = []
+    for port in ports:
+        if isinstance(port, int):
+            from_port = to_port = port
+        else:
+            from_port, to_port = port.split("-")
+            from_port = int(from_port)
+            to_port = int(to_port)
+        rules.append(
+            {
+                "FromPort": from_port,
+                "ToPort": to_port,
+                "IpProtocol": "tcp",
+                "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+            }
+        )
+    return rules
+
+
+def _configure_security_group(ec2, vpc_id: str, expected_sg_name: str, ports: List[Union[int, str]],
                               extended_ip_rules: List) -> List[str]:
     security_group = _get_or_create_vpc_security_group(ec2, vpc_id,
                                                        expected_sg_name)
     sg_ids = [security_group.id]
-    inbound_rules = [
+
+    inbound_rules = _retrieve_user_specified_rules(ports)
+    inbound_rules.extend([
         # intra-cluster rules
         {
             'FromPort': -1,
@@ -485,7 +525,7 @@ def _configure_security_group(ec2, vpc_id: str, expected_sg_name: str,
             }],
         },
         *extended_ip_rules,
-    ]
+    ])
     # upsert the default security group
     if not security_group.ip_permissions:
         # If users specify security groups, we should not change the rules
