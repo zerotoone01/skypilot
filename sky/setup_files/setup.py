@@ -102,7 +102,6 @@ install_requires = [
     'protobuf<4.0.0',
     'psutil',
     'pulp',
-    'pydantic',
 ]
 
 # NOTE: Change the templates/spot-controller.yaml.j2 file if any of the following
@@ -111,7 +110,7 @@ extras_require: Dict[str, List[str]] = {
     'aws': [
         # awscli>=1.27.10 is required for SSO support.
         'awscli',
-        'boto3>=1.4.8',
+        'boto3',
         # 'Crypto' module used in authentication.py for AWS.
         'pycryptodome==3.12.0',
     ],
