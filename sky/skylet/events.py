@@ -1,5 +1,4 @@
 """skylet events"""
-import getpass
 import math
 import os
 import re
@@ -11,11 +10,11 @@ import traceback
 import psutil
 import yaml
 
-from sky import provision
 from sky import sky_logging
-from sky.backends import backend_utils, cloud_vm_ray_backend
-from sky.provision import metadata_utils
-from sky.skylet import autostop_lib, job_lib
+from sky.backends import backend_utils
+from sky.backends import cloud_vm_ray_backend
+from sky.skylet import autostop_lib
+from sky.skylet import job_lib
 from sky.spot import spot_utils
 from sky.utils import common_utils
 
@@ -55,20 +54,12 @@ class SkyletEvent:
         raise NotImplementedError
 
 
-class JobUpdateEvent(SkyletEvent):
-    """Skylet event for updating job status."""
+class JobSchedulerEvent(SkyletEvent):
+    """Skylet event for scheduling jobs"""
     EVENT_INTERVAL_SECONDS = 300
 
-    # Only update status of the jobs after this many seconds of job submission,
-    # to avoid race condition with `ray job` to make sure it job has been
-    # correctly updated.
-    # TODO(zhwu): This number should be tuned based on heuristics.
-    _SUBMITTED_GAP_SECONDS = 60
-
     def _run(self):
-        job_owner = getpass.getuser()
-        job_lib.update_status(job_owner,
-                              submitted_gap_sec=self._SUBMITTED_GAP_SECONDS)
+        job_lib.scheduler.schedule_step()
 
 
 class SpotJobUpdateEvent(SkyletEvent):
@@ -129,63 +120,111 @@ class AutostopEvent(SkyletEvent):
             self._stop_cluster(autostop_config)
 
     def _stop_cluster(self, autostop_config):
-        metadata = metadata_utils.get_reflection_metadata()
-        if metadata is not None and metadata.provider_name == 'aws':
-            # New provisioner is used here.
-            autostop_lib.set_autostopping_started()
-            action = 'down' if autostop_config.down else 'stop'
-            logger.info(f'Running auto {action}.')
-            if autostop_config.down:
-                action_func = provision.terminate_instances
-            else:
-                action_func = provision.stop_instances
-            # Take down workers before taking down the head instance,
-            # which is the instance that is running this code.
-            action_func(metadata.provider_name,
-                        metadata.region,
-                        metadata.cluster_name,
-                        excluded_instances=[metadata.head_instance_id])
-            action_func(metadata.provider_name,
-                        metadata.region,
-                        metadata.cluster_name,
-                        included_instances=[metadata.head_instance_id])
-            return
-
         if (autostop_config.backend ==
                 cloud_vm_ray_backend.CloudVmRayBackend.NAME):
             autostop_lib.set_autostopping_started()
+
+            config = common_utils.read_yaml(self._ray_yaml_path)
+
+            provider_module = config['provider']['module']
+            provider_search = re.search(r'providers\.(.*)\.', provider_module)
+            assert provider_search is not None, config
+            provider_name = provider_search.group(1).lower()
+
+            if provider_name in ['aws', 'gcp']:
+                self._stop_cluster_with_new_provisioner(autostop_config, config,
+                                                        provider_name)
+                return
+
+            is_cluster_multinode = config['max_workers'] > 0
+
+            # Even for !is_cluster_multinode, we want to call this to replace
+            # cache_stopped_nodes.
             self._replace_yaml_for_stopping(self._ray_yaml_path,
                                             autostop_config.down)
 
-            # `ray up` is required to reset the upscaling speed and min/max
-            # workers. Otherwise, `ray down --workers-only` will continuously
-            # scale down and up.
-            logger.info('Running ray up.')
-            script = (cloud_vm_ray_backend.
-                      write_ray_up_script_with_patched_launch_hash_fn(
-                          self._ray_yaml_path,
-                          ray_up_kwargs={'restart_only': True}))
-            subprocess.run(
-                [sys.executable, script],
-                check=True,
-                # Use environment variables to disable the ray usage collection
-                # (to avoid overheads and potential issues with the usage)
-                # as sdk does not take the argument for disabling the usage
-                # collection.
-                env=dict(os.environ, RAY_USAGE_STATS_ENABLED='0'),
-            )
+            # Use environment variables to disable the ray usage collection (to
+            # avoid overheads and potential issues with the usage) as sdk does
+            # not take the argument for disabling the usage collection.
+            #
+            # Also clear any cloud-specific credentials set as env vars (e.g.,
+            # AWS's two env vars). Reason: for single-node AWS SSO clusters, we
+            # have seen a weird bug where user image's /etc/profile.d may
+            # contain the two AWS env vars, and so they take effect in the
+            # bootstrap phase of each of these 3 'ray' commands, throwing a
+            # RuntimeError when some private VPC is not found (since the VPC
+            # only exists in the assumed role, not in the custome principal set
+            # by the env vars).  See #1880 for details.
+            env = dict(os.environ, RAY_USAGE_STATS_ENABLED='0')
+            env.pop('AWS_ACCESS_KEY_ID', None)
+            env.pop('AWS_SECRET_ACCESS_KEY', None)
 
-            logger.info('Running ray down.')
-            # Stop the workers first to avoid orphan workers.
-            subprocess.run(
-                ['ray', 'down', '-y', '--workers-only', self._ray_yaml_path],
-                check=True)
+            # We do "initial ray up + ray down --workers-only" only for
+            # multinode clusters as they are not needed for single-node.
+            if is_cluster_multinode:
+                # `ray up` is required to reset the upscaling speed and min/max
+                # workers. Otherwise, `ray down --workers-only` will
+                # continuously scale down and up.
+                logger.info('Running ray up.')
+                script = (cloud_vm_ray_backend.
+                          write_ray_up_script_with_patched_launch_hash_fn(
+                              self._ray_yaml_path,
+                              ray_up_kwargs={'restart_only': True}))
+                # Passing env inherited from os.environ is technically not
+                # needed, because we call `python <script>` rather than `ray
+                # <cmd>`. We just need the {RAY_USAGE_STATS_ENABLED: 0} part.
+                subprocess.run([sys.executable, script], check=True, env=env)
+
+                logger.info('Running ray down.')
+                # Stop the workers first to avoid orphan workers.
+                subprocess.run(
+                    [
+                        'ray', 'down', '-y', '--workers-only',
+                        self._ray_yaml_path
+                    ],
+                    check=True,
+                    # We pass env inherited from os.environ due to calling `ray
+                    # <cmd>`.
+                    env=env)
 
             logger.info('Running final ray down.')
-            subprocess.run(['ray', 'down', '-y', self._ray_yaml_path],
-                           check=True)
+            subprocess.run(
+                ['ray', 'down', '-y', self._ray_yaml_path],
+                check=True,
+                # We pass env inherited from os.environ due to calling `ray
+                # <cmd>`.
+                env=env)
         else:
             raise NotImplementedError
+
+    def _stop_cluster_with_new_provisioner(self, autostop_config,
+                                           cluster_config, provider_name):
+        # pylint: disable=import-outside-toplevel
+        from sky import provision as provision_lib
+        autostop_lib.set_autostopping_started()
+
+        cluster_name = cluster_config['cluster_name']
+        is_cluster_multinode = cluster_config['max_workers'] > 0
+
+        os.environ.pop('AWS_ACCESS_KEY_ID', None)
+        os.environ.pop('AWS_SECRET_ACCESS_KEY', None)
+
+        # Stop the ray autoscaler to avoid scaling up, during
+        # stopping/terminating of the cluster.
+        subprocess.run('ray stop', shell=True, check=True)
+
+        operation_fn = provision_lib.stop_instances
+        if autostop_config.down:
+            operation_fn = provision_lib.terminate_instances
+
+        if is_cluster_multinode:
+            operation_fn(provider_name=provider_name,
+                         cluster_name=cluster_name,
+                         provider_config=cluster_config['provider'],
+                         worker_only=True)
+        operation_fn(provider_name=provider_name,
+                     cluster_name=cluster_name,
+                     provider_config=cluster_config['provider'])
 
     def _replace_yaml_for_stopping(self, yaml_path: str, down: bool):
         with open(yaml_path, 'r') as f:
