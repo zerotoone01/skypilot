@@ -25,7 +25,7 @@ BOTO_CREATE_MAX_RETRIES = 5
 
 # Tag uniquely identifying all nodes of a cluster
 TAG_RAY_CLUSTER_NAME = 'ray-cluster-name'
-TAG_RAY_NODE_TYPE = 'ray-node-type'  # legacy tag for backward compatibility
+TAG_RAY_NODE_KIND = 'ray-node-type'  # legacy tag for backward compatibility
 TAG_SKYPILOT_HEAD_NODE = 'skypilot-head-node'
 BOTO_MAX_RETRIES = 12
 
@@ -176,7 +176,7 @@ def _get_head_instance_id(instances: List) -> Optional[str]:
     head_instance_id = None
     head_node_markers = (
         (TAG_SKYPILOT_HEAD_NODE, '1'),
-        (TAG_RAY_NODE_TYPE, 'head'),  # backward compat with Ray
+        (TAG_RAY_NODE_KIND, 'head'),  # backward compat with Ray
     )
     for inst in instances:
         for t in inst.tags:
@@ -242,11 +242,11 @@ def start_instances(region: str, cluster_name: str,
                 'Key': TAG_SKYPILOT_HEAD_NODE,
                 'Value': '1'
             }, {
-                'Key': TAG_RAY_NODE_TYPE,
+                'Key': TAG_RAY_NODE_KIND,
                 'Value': 'head'
             }]
         else:
-            node_tag = [{'Key': TAG_RAY_NODE_TYPE, 'Value': 'worker'}]
+            node_tag = [{'Key': TAG_RAY_NODE_KIND, 'Value': 'worker'}]
         ec2.meta.client.create_tags(
             Resources=[target_instance.id],
             Tags=target_instance.tags + node_tag,
@@ -429,7 +429,7 @@ def stop_instances(
     ]
     if worker_only:
         filters.append({
-            'Name': f'tag:{TAG_RAY_NODE_TYPE}',
+            'Name': f'tag:{TAG_RAY_NODE_KIND}',
             'Values': ['worker'],
         })
     instances = _filter_instances(ec2, filters, None, None)
@@ -461,7 +461,7 @@ def terminate_instances(
     ]
     if worker_only:
         filters.append({
-            'Name': f'tag:{TAG_RAY_NODE_TYPE}',
+            'Name': f'tag:{TAG_RAY_NODE_KIND}',
             'Values': ['worker'],
         })
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Instance
