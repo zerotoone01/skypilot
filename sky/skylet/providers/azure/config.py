@@ -90,7 +90,7 @@ def _configure_resource_group(config):
     assert nsg_resource is not None, "Could not find NSG resource in template"
     ports = config["provider"].get("ports", None)
     if ports is not None:
-        ports = [str(port) for port in ports if port != 22]
+        ports = [port for port in ports if port != '22']
         nsg_resource["properties"]["securityRules"].append(
             {
                 "name": "user-ports",

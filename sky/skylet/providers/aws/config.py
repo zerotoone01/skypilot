@@ -1027,8 +1027,8 @@ def _create_default_inbound_rules(sgids, user_specified_rules, extended_rules=No
 def _retrieve_user_specified_rules(ports):
     rules = []
     for port in ports:
-        if isinstance(port, int):
-            from_port = to_port = port
+        if port.isdigit():
+            from_port = to_port = int(port)
         else:
             from_port, to_port = port.split("-")
             from_port = int(from_port)

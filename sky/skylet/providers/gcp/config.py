@@ -820,7 +820,7 @@ def get_usable_vpc(config):
                 "allowed": [
                     {
                         "IPProtocol": "tcp",
-                        "ports": [str(port)],
+                        "ports": [port],
                     },
                 ],
                 "sourceRanges": ["0.0.0.0/0"],

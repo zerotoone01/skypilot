@@ -171,7 +171,7 @@ class Resources:
         if ports is not None:
             if not isinstance(ports, list):
                 ports = [ports]
-        self._ports = ports
+        self._ports = [str(port) for port in ports]
         self._docker_login_config = _docker_login_config
 
         self._set_cpus(cpus)
@@ -368,7 +368,7 @@ class Resources:
         return self._disk_tier
 
     @property
-    def ports(self) -> Optional[List[Union[int, str]]]:
+    def ports(self) -> Optional[List[str]]:
         return self._ports
 
     @property
@@ -801,33 +801,35 @@ class Resources:
             self.cloud.check_features_are_supported(
                 {clouds.CloudImplementationFeatures.OPEN_PORTS})
         for port in self.ports:
-            if isinstance(port, int):
-                if port < 1 or port > 65535:
-                    with ux_utils.print_exception_no_traceback():
-                        raise ValueError(
-                            f'Invalid port {port}. Please use a port number '
-                            'between 1 and 65535.')
-            elif isinstance(port, str):
-                port_range = port.split('-')
-                if len(port_range) != 2:
-                    with ux_utils.print_exception_no_traceback():
-                        raise ValueError(
-                            f'Invalid port {port}. Please use a port range '
-                            'such as 10022-10040.')
-                try:
-                    from_port = int(port_range[0])
-                    to_port = int(port_range[1])
-                except ValueError as e:
-                    with ux_utils.print_exception_no_traceback():
-                        raise ValueError(
-                            f'Invalid port {port}. Please use a integer inside'
-                            ' the range.') from e
-                if (from_port < 1 or from_port > 65535 or to_port < 1 or
-                        to_port > 65535):
-                    with ux_utils.print_exception_no_traceback():
-                        raise ValueError(
-                            f'Invalid port {port}. Please use port '
-                            'numbers between 1 and 65535.')
+            if isinstance(port, str):
+                if port.isdigit():
+                    int_port = int(port)
+                    if int_port < 1 or int_port > 65535:
+                        with ux_utils.print_exception_no_traceback():
+                            raise ValueError(
+                                f'Invalid port {port}. Please use a port '
+                                'number between 1 and 65535.')
+                else:
+                    port_range = port.split('-')
+                    if len(port_range) != 2:
+                        with ux_utils.print_exception_no_traceback():
+                            raise ValueError(
+                                f'Invalid port {port}. Please use a port '
+                                'range such as 10022-10040.')
+                    try:
+                        from_port = int(port_range[0])
+                        to_port = int(port_range[1])
+                    except ValueError as e:
+                        with ux_utils.print_exception_no_traceback():
+                            raise ValueError(
+                                f'Invalid port {port}. Please use a integer '
+                                'inside the range.') from e
+                    if (from_port < 1 or from_port > 65535 or to_port < 1 or
+                            to_port > 65535):
+                        with ux_utils.print_exception_no_traceback():
+                            raise ValueError(
+                                f'Invalid port {port}. Please use port '
+                                'numbers between 1 and 65535.')
             else:
                 with ux_utils.print_exception_no_traceback():
                     raise ValueError(
@@ -967,8 +969,8 @@ class Resources:
             def parse_ports(ports):
                 port_set = set()
                 for p in ports:
-                    if isinstance(p, int):
-                        port_set.add(p)
+                    if p.isdigit():
+                        port_set.add(int(p))
                     else:
                         from_port, to_port = p.split('-')
                         port_set.update(range(int(from_port), int(to_port) + 1))
